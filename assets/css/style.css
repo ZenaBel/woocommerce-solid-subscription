@@ -1,0 +1,24 @@
+#solid-payment-form-iframe {
+	border: none;
+}
+
+.woocommerce_options_panel .subscription-period-group {
+	display: flex;
+	align-items: center;
+	margin-bottom: 10px;
+}
+
+.woocommerce_options_panel .subscription-period-group .form-field {
+	flex: 1;
+	margin-right: 10px;
+}
+
+.woocommerce_options_panel .subscription-period-group .form-field:last-child {
+	margin-right: 0;
+}
+
+.woocommerce_options_panel .form-field select,
+.woocommerce_options_panel .form-field input[type="number"] {
+	width: 100%;
+}
+

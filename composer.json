@@ -1,0 +1,5 @@
+{
+    "require": {
+        "solidgate/php-sdk": "^1.4"
+    }
+}
