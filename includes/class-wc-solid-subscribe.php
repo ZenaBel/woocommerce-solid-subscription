@@ -26,8 +26,9 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             $this->method_description = 'Visa/Mastercard Subscribe'; // payment method description for the admin page
             //$this->order_button_text = 'Pay via Solid';
             $this->supports = array(
-                'subscriptions',
                 'products',
+                'subscriptions',
+                'subscription_cancellation',
             );
             $this->hooks = new WC_Solid_Subscribe_Webhook_Handler();
             // Method with all the options fields

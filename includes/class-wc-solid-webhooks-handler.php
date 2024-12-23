@@ -181,8 +181,10 @@ class WC_Solid_Subscribe_Webhook_Handler {
 
         if ( $notification->subscription->status === 'active' ) {
             $order->update_status( 'processing', __( 'Подписка активирована', 'wc-solid' ) );
+            WC_Subscriptions_Manager::activate_subscriptions_for_order( $order );
         } else {
             $order->update_status( 'cancelled', __( 'Подписка отменена', 'wc-solid' ) );
+            WC_Subscriptions_Manager::cancel_subscriptions_for_order( $order );
         }
     }
 
@@ -212,6 +214,62 @@ class WC_Solid_Subscribe_Webhook_Handler {
         }
 
         $order->update_status( 'cancelled', __( 'Подписка отменена', 'wc-solid' ) );
+        WC_Subscriptions_Manager::cancel_subscriptions_for_order( $order );
+    }
+
+    public function process_renew_subscription( $notification ) {
+        WC_Solid_Subscribe_Logger::debug( 'Получено уведомление о подписке: ' . json_encode( $notification ) );
+        $order_id = null;
+        foreach ($notification->invoices as $invoice) {
+            if (isset($invoice->orders)) {
+                foreach ($invoice->orders as $order) {
+                    $order_id = explode('_', $order->id)[0];
+                    break 2;
+                }
+            }
+        }
+
+        $subscription_id = $notification->subscription->id ?? null;
+
+        WC_Solid_Subscribe_Logger::debug( '(renew) ID заказа: ' . $order_id );
+        WC_Solid_Subscribe_Logger::debug( '(renew) ID подписки: ' . $subscription_id );
+
+        $order = wc_get_order( $order_id );
+        if ( ! $order ) {
+            WC_Solid_Subscribe_Logger::alert( 'Не удалось найти заказ по ID заказа: ' . $order_id );
+            return;
+        }
+
+        $order->update_status( 'processing', __( 'Подписка продлена', 'wc-solid' ) );
+        $order->update_status( 'completed', __( 'Подписка продлена', 'wc-solid' ) );
+        WC_Subscriptions_Manager::activate_subscriptions_for_order( $order );
+    }
+
+    public function process_expire_subscription( $notification ) {
+        WC_Solid_Subscribe_Logger::debug( 'Получено уведомление о подписке: ' . json_encode( $notification ) );
+        $order_id = null;
+        foreach ($notification->invoices as $invoice) {
+            if (isset($invoice->orders)) {
+                foreach ($invoice->orders as $order) {
+                    $order_id = explode('_', $order->id)[0];
+                    break 2;
+                }
+            }
+        }
+
+        $subscription_id = $notification->subscription->id ?? null;
+
+        WC_Solid_Subscribe_Logger::debug( '(expire) ID заказа: ' . $order_id );
+        WC_Solid_Subscribe_Logger::debug( '(expire) ID подписки: ' . $subscription_id );
+
+        $order = wc_get_order( $order_id );
+        if ( ! $order ) {
+            WC_Solid_Subscribe_Logger::alert( 'Не удалось найти заказ по ID заказа: ' . $order_id );
+            return;
+        }
+
+        $order->update_status( 'cancelled', __( 'Подписка истекла', 'wc-solid' ) );
+        WC_Subscriptions_Manager::expire_subscriptions_for_order( $order_id );
     }
 
     /**
@@ -254,6 +312,13 @@ class WC_Solid_Subscribe_Webhook_Handler {
                         break;
                     case 'cancel':
                         $this->process_cancel_subscription( $notification );
+                    case 'renew':
+                    case 'restore':
+                        $this->process_renew_subscription( $notification );
+                        break;
+                    case 'expire':
+                        $this->process_expire_subscription( $notification );
+                        break;
                     default:
                         WC_Solid_Subscribe_Logger::debug( sprintf( 'Необработанный hook: %1$s -> %2$s', $type, $notification->callback_type ) );
                         break;
