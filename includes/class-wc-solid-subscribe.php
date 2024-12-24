@@ -18,7 +18,7 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
          */
         public function __construct()
         {
-//            dd(plugins_url('assets/img/solidgate.png', __FILE__));
+            // dd(plugins_url('assets/img/solidgate.png', __FILE__));
             $this->id = 'solid_subscribe'; // payment gateway plugin ID
             $this->icon = plugins_url('assets/img/solidgate.svg', dirname(__FILE__)); // URL of the icon that will be displayed on checkout page near your gateway name
             $this->has_fields = false; // in case you need a custom credit card form
@@ -60,7 +60,7 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             }
 
             // This action hook saves the settings
-//            add_action( 'woocommerce_receipt_'.$this->id, array(&$this, 'receipt_page'));
+            // add_action( 'woocommerce_receipt_'.$this->id, array(&$this, 'receipt_page'));
 
             add_action('woocommerce_update_options_payment_gateways_' . $this->id, array($this, 'process_admin_options'));
 
@@ -71,7 +71,31 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             add_action('woocommerce_process_product_meta', [$this, 'save_subscription_product_fields'], 10, 2);
             add_action('woocommerce_payment_complete', [$this, 'create_subscription'], 10, 1);
             add_action('add_meta_boxes', [$this, 'add_subscription_meta_box']);
+            add_action('add_meta_boxes', [$this,'add_pause_meta_box']);
             add_action('admin_notices', [$this, 'display_admin_notices']);
+            add_action('admin_enqueue_scripts', function() {
+                $nonce = wp_create_nonce('pause_subscription_nonce');
+            
+                wp_enqueue_script(
+                    'admin-subscription-js',
+                    dirname(plugin_dir_url(__FILE__)) . '/assets/js/admin-subscription.js',
+                    ['jquery'],
+                    '1.0.0',
+                    true
+                );
+            
+                // Передаємо глобальні змінні в JavaScript
+                wp_localize_script('admin-subscription-js', 'pauseSubscriptionData', [
+                    'ajaxurl' => admin_url('admin-ajax.php'),
+                    'nonce' => $nonce,
+                ]);
+            });
+            add_action('init', [$this, 'register_ajax_hooks']);
+        }
+
+        public function register_ajax_hooks() {
+            add_action('wp_ajax_pause_subscription', [$this, 'pause_subscription']);
+            add_action('wp_ajax_nopriv_pause_subscription', [$this, 'pause_subscription']);
         }
 
 
@@ -901,10 +925,20 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             );
         }
 
+        public function add_pause_meta_box()
+        {
+            add_meta_box(
+                'pause_meta_box',              // ID метабокса
+                __('Subscription Pause', 'textdomain'),
+                [$this,'display_subscription_pause_meta_box'],
+                'shop_order',
+                'side',
+                'high',
+            );
+        }
+
         public function display_subscription_meta_box($post)
         {
-//            update_post_meta($post->ID, '_solid_subscription_id', 'a935837a-7a3a-4459-a361-bc68db8aa2dd');
-//            dd(get_post_meta($post->ID, '_solid_subscription_id', true));
             // Отримуємо subscription_id з мета-даних замовлення
             $subscription_id = get_post_meta($post->ID, '_solid_subscription_id', true);
 
@@ -980,6 +1014,74 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             } else {
                 echo '<p>' . __('This order is not linked to any subscription.', 'textdomain') . '</p>';
             }
+        }
+
+        public function display_subscription_pause_meta_box($post) {
+            $nonce = wp_create_nonce('pause_subscription_nonce');
+            ?>
+            <div style="margin-top: 10px;">
+                <label for="pause_start_date"><?php _e('Start Date (optional):', 'textdomain'); ?></label>
+                <input type="datetime-local" id="pause_start_date" name="pause_start_date">
+            </div>
+
+            <div style="margin-top: 10px;">
+                <label for="pause_stop_date"><?php _e('Stop Date (optional):', 'textdomain'); ?></label>
+                <input type="datetime-local" id="pause_stop_date" name="pause_stop_date">
+            </div>
+
+            <button type="button" id="send_pause_request" class="button button-primary" style="margin-top: 10px;">
+                <?php _e('Pause Subscription', 'textdomain'); ?>
+            </button>
+            <?php
+        }
+
+        public function pause_subscription() {
+            if (!isset($_POST['_nonce']) || !wp_verify_nonce($_POST['_nonce'], 'pause_subscription_nonce')) {
+                wp_send_json_error(['message' => 'Invalid nonce']);
+            }
+            WC_Solid_Subscribe_Logger::debug('Pause Subscription Request: ' . print_r($_POST, true));
+            wp_send_json_success(['response' => wp_remote_retrieve_body(['status' => 'success'])]);
+            // // Отримуємо дані із запиту
+            // $start_point = $_POST['start_point'] ?? [];
+            // $stop_point = $_POST['stop_point'] ?? [];
+        
+            // // Якщо не вказано дату, встановлюємо type як "immediate"
+            // $start_point['type'] = empty($start_point['date']) ? 'immediate' : 'specific_date';
+            // $stop_point['type'] = empty($stop_point['date']) ? 'immediate' : 'specific_date';
+        
+            // // Очищаємо date, якщо type = "immediate"
+            // if ($start_point['type'] === 'immediate') {
+            //     unset($start_point['date']);
+            // }
+            // if ($stop_point['type'] === 'immediate') {
+            //     unset($stop_point['date']);
+            // }
+        
+            // // Замініть subscription_id на реальний ідентифікатор підписки
+            // $subscription_id = 'your_subscription_id';
+        
+            // $api_url = "https://subscriptions.solidgate.com/api/v1/subscriptions/{$subscription_id}/pause-schedule";
+        
+            // $body = [
+            //     'start_point' => $start_point,
+            //     'stop_point' => $stop_point,
+            // ];
+        
+            // // Надсилаємо запит до Solidgate API
+            // $response = wp_remote_post($api_url, [
+            //     'body' => wp_json_encode($body),
+            //     'headers' => [
+            //         'Content-Type' => 'application/json',
+            //         'Authorization' => 'Bearer your_api_key', // Замість your_api_key використайте свій ключ
+            //     ],
+            // ]);
+        
+            // // Повертаємо результат
+            // if (is_wp_error($response)) {
+            //     wp_send_json_error(['message' => $response->get_error_message()]);
+            // }
+        
+            // wp_send_json_success(['response' => wp_remote_retrieve_body($response)]);
         }
 
 
