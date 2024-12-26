@@ -12,6 +12,7 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
 
     class WC_Solid_Gateway_Subscribe extends WC_Payment_Gateway
     {
+        private static $instance = null;
 
         /**
          * Class constructor, more about it in Step 3
@@ -71,11 +72,11 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             add_action('woocommerce_process_product_meta', [$this, 'save_subscription_product_fields'], 10, 2);
             add_action('woocommerce_payment_complete', [$this, 'create_subscription'], 10, 1);
             add_action('add_meta_boxes', [$this, 'add_subscription_meta_box']);
-            add_action('add_meta_boxes', [$this,'add_pause_meta_box']);
+            add_action('add_meta_boxes', [$this, 'add_pause_meta_box']);
             add_action('admin_notices', [$this, 'display_admin_notices']);
-            add_action('admin_enqueue_scripts', function() {
+            add_action('admin_enqueue_scripts', function () {
                 $nonce = wp_create_nonce('pause_subscription_nonce');
-            
+
                 wp_enqueue_script(
                     'admin-subscription-js',
                     dirname(plugin_dir_url(__FILE__)) . '/assets/js/admin-subscription.js',
@@ -83,19 +84,23 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                     '1.0.0',
                     true
                 );
-            
                 // Передаємо глобальні змінні в JavaScript
                 wp_localize_script('admin-subscription-js', 'pauseSubscriptionData', [
                     'ajaxurl' => admin_url('admin-ajax.php'),
                     'nonce' => $nonce,
+                    'order_id' => $_GET['post'] ?? 0,
                 ]);
             });
-            add_action('init', [$this, 'register_ajax_hooks']);
+            add_action('admin_post_restore_subscription', [$this, 'handle_restore_subscription']);
+            add_filter('woocommerce_subscription_payment_meta', [$this, 'add_custom_payment_method_to_admin'], 10, 2);
         }
 
-        public function register_ajax_hooks() {
-            add_action('wp_ajax_pause_subscription', [$this, 'pause_subscription']);
-            add_action('wp_ajax_nopriv_pause_subscription', [$this, 'pause_subscription']);
+        public static function get_instance()
+        {
+            if (self::$instance === null) {
+                self::$instance = new self();
+            }
+            return self::$instance;
         }
 
 
@@ -314,7 +319,8 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             }
         }
 
-        public function payment_fields() {
+        public function payment_fields()
+        {
             $description = $this->get_description();
 
             // Ваш контейнер для модального вікна
@@ -534,8 +540,6 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
 
         public function process_payment($order_id)
         {
-            global $woocommerce;
-
             $order = wc_get_order($order_id);
             $order_title = 'Your order';
             $uniq_order_id = $order->get_id() . '_' . time();
@@ -711,13 +715,13 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             $price = $product->get_regular_price() ?: $product->get_sale_price();
 
             WC_Solid_Subscribe_Logger::debug('Subscription product data: ' . print_r([
-                'duration' => $subscription_duration,
-                'period' => $subscription_period,
-                'interval' => $subscription_interval,
-                'trial_duration' => $free_trial_duration,
-                'trial_period' => $free_trial_period,
-                'price' => $price,
-            ], true));
+                    'duration' => $subscription_duration,
+                    'period' => $subscription_period,
+                    'interval' => $subscription_interval,
+                    'trial_duration' => $free_trial_duration,
+                    'trial_period' => $free_trial_period,
+                    'price' => $price,
+                ], true));
 
             // Формуємо масив даних для Solidgate
             $data = [
@@ -771,7 +775,7 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             if (empty($solidgate_product['id'])) {
                 $error_message = __('Failed to create product in Solidgate. Please check your configuration and try again.', 'woocommerce');
                 WC_Solid_Subscribe_Logger::alert($error_message);
-                add_action('admin_notices', function() use ($error_message) {
+                add_action('admin_notices', function () use ($error_message) {
                     echo '<div class="notice notice-error"><p>' . esc_html($error_message) . '</p></div>';
                 });
                 return;
@@ -930,10 +934,10 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             add_meta_box(
                 'pause_meta_box',              // ID метабокса
                 __('Subscription Pause', 'textdomain'),
-                [$this,'display_subscription_pause_meta_box'],
+                [$this, 'display_subscription_pause_meta_box'],
                 'shop_order',
                 'side',
-                'high',
+                'high'
             );
         }
 
@@ -1016,76 +1020,268 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             }
         }
 
-        public function display_subscription_pause_meta_box($post) {
-            $nonce = wp_create_nonce('pause_subscription_nonce');
-            ?>
-            <div style="margin-top: 10px;">
-                <label for="pause_start_date"><?php _e('Start Date (optional):', 'textdomain'); ?></label>
-                <input type="datetime-local" id="pause_start_date" name="pause_start_date">
-            </div>
+        public function display_subscription_pause_meta_box($post)
+        {
+            $pause_start_point = get_post_meta($post->ID, '_pause_start_point', true);
+            $pause_stop_point = get_post_meta($post->ID, '_pause_stop_point', true);
+            $existing_pause = get_post_meta($post->ID, '_pause_schedule_exists', true);
+            $subscription_id = get_post_meta($post->ID, '_solid_subscription_id', true);
 
-            <div style="margin-top: 10px;">
-                <label for="pause_stop_date"><?php _e('Stop Date (optional):', 'textdomain'); ?></label>
-                <input type="datetime-local" id="pause_stop_date" name="pause_stop_date">
-            </div>
+            if (!$subscription_id) {
+                echo '<p>' . __('This order is not linked to any subscription.', 'textdomain') . '</p>';
+                return;
+            }
 
-            <button type="button" id="send_pause_request" class="button button-primary" style="margin-top: 10px;">
-                <?php _e('Pause Subscription', 'textdomain'); ?>
-            </button>
-            <?php
+            echo '<div style="margin-top: 10px;">';
+            echo '<label for="pause_start_date">' . __('Start Date (optional):', 'textdomain') . '</label>';
+            echo '<input type="date" id="pause_start_date" name="pause_start_date" value="' . esc_attr($pause_start_point['date'] ?? '') . '">';
+            echo '</div>';
+            echo '<div style="margin-top: 10px;">';
+            echo '<label for="pause_stop_date">' . __('Stop Date (optional):', 'textdomain') . '</label>';
+            echo '<input type="date" id="pause_stop_date" name="pause_stop_date" value="' . esc_attr($pause_stop_point['date'] ?? '') . '">';
+            echo '</div>';
+            echo '<button type="button" id="send_pause_request" class="button button-primary" style="margin-top: 10px;">';
+            echo __('Pause Subscription', 'textdomain');
+            echo '</button>';
+
+            if ($existing_pause) {
+                echo '<button type="button" id="remove_pause_request" class="button button-cancel" style="margin-top: 10px;">';
+                echo __('Remove Subscription Pause', 'textdomain');
+                echo '</button>';
+            }
         }
 
-        public function pause_subscription() {
+        public function pause_subscription()
+        {
             if (!isset($_POST['_nonce']) || !wp_verify_nonce($_POST['_nonce'], 'pause_subscription_nonce')) {
                 wp_send_json_error(['message' => 'Invalid nonce']);
             }
+
             WC_Solid_Subscribe_Logger::debug('Pause Subscription Request: ' . print_r($_POST, true));
-            wp_send_json_success(['response' => wp_remote_retrieve_body(['status' => 'success'])]);
-            // // Отримуємо дані із запиту
-            // $start_point = $_POST['start_point'] ?? [];
-            // $stop_point = $_POST['stop_point'] ?? [];
-        
-            // // Якщо не вказано дату, встановлюємо type як "immediate"
-            // $start_point['type'] = empty($start_point['date']) ? 'immediate' : 'specific_date';
-            // $stop_point['type'] = empty($stop_point['date']) ? 'immediate' : 'specific_date';
-        
-            // // Очищаємо date, якщо type = "immediate"
-            // if ($start_point['type'] === 'immediate') {
-            //     unset($start_point['date']);
-            // }
-            // if ($stop_point['type'] === 'immediate') {
-            //     unset($stop_point['date']);
-            // }
-        
-            // // Замініть subscription_id на реальний ідентифікатор підписки
-            // $subscription_id = 'your_subscription_id';
-        
-            // $api_url = "https://subscriptions.solidgate.com/api/v1/subscriptions/{$subscription_id}/pause-schedule";
-        
-            // $body = [
-            //     'start_point' => $start_point,
-            //     'stop_point' => $stop_point,
-            // ];
-        
-            // // Надсилаємо запит до Solidgate API
-            // $response = wp_remote_post($api_url, [
-            //     'body' => wp_json_encode($body),
-            //     'headers' => [
-            //         'Content-Type' => 'application/json',
-            //         'Authorization' => 'Bearer your_api_key', // Замість your_api_key використайте свій ключ
-            //     ],
-            // ]);
-        
-            // // Повертаємо результат
-            // if (is_wp_error($response)) {
-            //     wp_send_json_error(['message' => $response->get_error_message()]);
-            // }
-        
-            // wp_send_json_success(['response' => wp_remote_retrieve_body($response)]);
+
+            if (!empty($_POST['order_id'])) {
+                $order_id = sanitize_text_field($_POST['order_id']);
+            } else {
+                wp_send_json_error(['message' => 'Order ID is required']);
+            }
+
+            // Отримуємо дані із запиту
+            $start_point = $_POST['start_point'] ?? [];
+            $stop_point = $_POST['stop_point'] ?? [];
+
+            // Якщо не вказано дату, встановлюємо type як "immediate"
+            $start_point['type'] = empty($start_point['date']) ? 'immediate' : 'specific_date';
+            $stop_point['type'] = empty($stop_point['date']) ? 'infinite' : 'specific_date';
+
+            // Зберігаємо дані у мета-дані замовлення
+            update_post_meta($order_id, '_pause_start_point', $start_point);
+            update_post_meta($order_id, '_pause_stop_point', $stop_point);
+
+            try {
+                $subscription_id = get_post_meta($order_id, '_solid_subscription_id', true);
+
+
+                $body = [
+                    'start_point' => [
+                        'type' => $start_point['type'],
+//                        'date' => $start_point['date'] ?? null,
+                    ],
+                    'stop_point' => [
+                        'type' => $stop_point['type'],
+//                        'date' => $stop_point['date'] ?? null,
+                    ],
+                ];
+
+                if ($start_point['type'] === 'specific_date') {
+                    $body['start_point']['date'] = date('Y-m-d H:i:s', strtotime($start_point['date'] . ' 00:00:00'));
+                }
+
+                if ($stop_point['type'] === 'specific_date') {
+                    $body['stop_point']['date'] = date('Y-m-d H:i:s', strtotime($stop_point['date'] . ' 23:59:59'));
+                }
+
+                // Виконуємо паузу або оновлення паузи
+                $existing_pause = get_post_meta($order_id, '_pause_schedule_exists', true);
+
+                if ($existing_pause) {
+                    $response = $this->api->updatePauseSchedule($subscription_id, $body);
+                    $action = 'Update Pause Schedule';
+                } else {
+                    $response = $this->api->pauseSchedule($subscription_id, $body);
+                    $action = 'Pause Schedule';
+                    update_post_meta($order_id, '_pause_schedule_exists', true);
+                }
+
+                WC_Solid_Subscribe_Logger::debug("$action Response: " . print_r($response, true));
+
+                if (!is_wp_error($response)) {
+                    $body = json_decode($response, true);
+                    if ($body['pause']) {
+                        wp_send_json_success(['message' => 'Subscription paused successfully']);
+                    } else {
+                        wp_send_json_error(['message' => 'Failed to pause subscription']);
+                    }
+                } else {
+                    wp_send_json_error(['message' => 'Failed to pause subscription']);
+                }
+            } catch (Exception $e) {
+                WC_Solid_Subscribe_Logger::alert('Pause Subscription Exception: ' . print_r($e, true));
+                wp_send_json_error(['message' => 'Failed to pause subscription']);
+            }
+        }
+
+        public function resume_subscription()
+        {
+            if (!isset($_POST['_nonce']) || !wp_verify_nonce($_POST['_nonce'], 'pause_subscription_nonce')) {
+                wp_send_json_error(['message' => 'Invalid nonce']);
+            }
+
+            WC_Solid_Subscribe_Logger::debug('Remove Pause Subscription Request: ' . print_r($_POST, true));
+
+            if (!empty($_POST['order_id'])) {
+                $order_id = sanitize_text_field($_POST['order_id']);
+            } else {
+                wp_send_json_error(['message' => 'Order ID is required']);
+            }
+
+            try {
+                $subscription_id = get_post_meta($order_id, '_solid_subscription_id', true);
+
+                $response = $this->api->removePauseSchedule($subscription_id);
+
+                WC_Solid_Subscribe_Logger::debug('Remove Pause Subscription Response: ' . print_r($response, true));
+
+                if (!is_wp_error($response)) {
+                    $body = json_decode($response, true);
+                    if ($body['status'] === 'active') {
+                        delete_post_meta($order_id, '_pause_schedule_exists');
+                        delete_post_meta($order_id, '_pause_start_point');
+                        delete_post_meta($order_id, '_pause_stop_point');
+                        wp_send_json_success(['message' => 'Subscription pause removed successfully']);
+                    } else {
+                        wp_send_json_error(['message' => 'Failed to remove subscription pause']);
+                    }
+
+                } else {
+                    wp_send_json_error(['message' => 'Failed to remove subscription pause']);
+                }
+            } catch (Exception $e) {
+                WC_Solid_Subscribe_Logger::alert('Remove Pause Subscription Exception: ' . print_r($e, true));
+                wp_send_json_error(['message' => 'Failed to remove subscription pause']);
+            }
+        }
+
+        public function handle_restore_subscription()
+        {
+            if (!isset($_GET['subscription_id']) || !wp_verify_nonce($_REQUEST['_wpnonce'], 'restore_subscription')) {
+                wp_die(__('Invalid request', 'woocommerce'));
+            }
+
+            $subscription_id = intval($_GET['subscription_id']);
+            $subscription = wcs_get_subscription($subscription_id);
+
+            if (!$subscription) {
+                wp_die(__('No subscription found', 'woocommerce'));
+            }
+
+            // Перевірка статусу підписки
+            if ($subscription->has_status(['cancelled', 'expired'])) {
+                $subscription->update_status('active'); // Встановлюємо статус "Активна"
+                wc_add_notice(__('Subscription successfully restored.', 'woocommerce'), 'success');
+            } else {
+                wc_add_notice(__('This subscription cannot be renewed.', 'woocommerce'), 'error');
+            }
+
+            // Повернення на сторінку підписок
+            wp_redirect(admin_url('edit.php?post_type=shop_subscription'));
+            exit;
+        }
+
+        public function add_custom_payment_method_to_admin($payment_meta, $subscription)
+        {
+            $payment_meta[$subscription->get_payment_method()] = array(
+                'value' => 'solid_subscribe',
+                'label' => __('Solidgate', 'woocommerce'),
+            );
+            return $payment_meta;
+        }
+
+        public function send_status_change_to_gateway(WC_Subscription $subscription, $old_status, $new_status)
+        {
+            $order_id = $subscription->get_parent_id();
+
+            $subscription_id = get_post_meta($order_id, '_solid_subscription_id', true);
+
+            if (!$subscription_id) {
+                return;
+            }
+
+            // Логи для відлагодження
+            WC_Solid_Subscribe_Logger::debug("Підписка #$subscription_id: статус змінено з $old_status на $new_status");
+
+            // Відправляємо дані на платіжний шлюз
+            $gateway_response = $this->send_status_to_gateway($subscription_id, $old_status, $new_status);
+
+            // Логи відповіді шлюзу
+            WC_Solid_Subscribe_Logger::debug("Відповідь платіжного шлюзу: $gateway_response");
+        }
+
+        private function send_status_to_gateway($subscription_id, $old_status, $new_status): string
+        {
+            if ($new_status === 'active' && $old_status === 'cancelled') {
+                $data = [
+                    'subscription_id' => $subscription_id,
+                ];
+                $response = $this->api->reactivateSubscription($data);
+            } elseif ($new_status === 'cancelled' && $old_status === 'active') {
+                $data = [
+                    'subscription_id' => $subscription_id,
+                    'force' => false,
+                    'cancel_code' => '8.6',
+                ];
+                $response = $this->api->cancelSubscription($data);
+            } elseif ($new_status === 'cancelled' && $old_status === 'on-hold') {
+                $data = [
+                    'subscription_id' => $subscription_id,
+                    'force' => false,
+                    'cancel_code' => '8.6',
+                ];
+                $response = $this->api->cancelSubscription($data);
+            } elseif ($new_status === 'on-hold' && $old_status === 'active') {
+                $data = [
+                    'start_point' => [
+                        'type' => 'immediate',
+                    ],
+                    'stop_point' => [
+                        'type' => 'infinite',
+                    ],
+                ];
+                $response = $this->api->pauseSchedule($subscription_id, $data);
+            } elseif ($new_status === 'active' && $old_status === 'on-hold') {
+                $response = $this->api->removePauseSchedule($subscription_id);
+            } elseif ($new_status === 'pending-cancel' && $old_status === 'active') {
+                $data = [
+                    'subscription_id' => $subscription_id,
+                    'force' => false,
+                    'cancel_code' => '8.6',
+                ];
+                $response = $this->api->cancelSubscription($data);
+            } elseif ($new_status === 'pending-cancel' && $old_status === 'on-hold') {
+                $data = [
+                    'subscription_id' => $subscription_id,
+                    'force' => false,
+                    'cancel_code' => '8.6',
+                ];
+                $response = $this->api->cancelSubscription($data);
+            } else {
+                $response = 'No action required';
+            }
+
+            return $response;
         }
 
 
-        public function error_code_lookup($code)
+        public function error_code_lookup($code): string
         {
             $messages = array(
                 '3.02' => 'Not enough funds for payment on the card. Please try to use another card or choose another payment method.',
@@ -1095,7 +1291,7 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                 '3.06' => 'Unfortunately, debit cards do not support online payments. Try using a credit card or choose another payment method. ',
                 '4.09' => 'Your payment was declined due to technical error. Please contact support team.',
             );
-            return isset($messages[$code]) ? $messages[$code] : 'Card is blocked for the Internet payments. Contact support of your bank to unblock your card or use another card.';
+            return $messages[$code] ?? 'Card is blocked for the Internet payments. Contact support of your bank to unblock your card or use another card.';
         }
 
     }

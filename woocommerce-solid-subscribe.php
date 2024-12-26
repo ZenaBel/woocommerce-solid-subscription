@@ -44,10 +44,11 @@ function solid_gateway_subscribe_init() {
         add_filter('woocommerce_payment_gateways', 'solid_add_subscribe_gateway_class');
 //        add_filter('woocommerce_payment_gateways', 'solid_add_gateway_class');
     }
-
-
-
-
+    add_action('wp_ajax_solid_pause_subscription', [WC_Solid_Gateway_Subscribe::get_instance(), 'pause_subscription']);
+    add_action('wp_ajax_nopriv_solid_pause_subscription', [WC_Solid_Gateway_Subscribe::get_instance(), 'pause_subscription']);
+    add_action('wp_ajax_solid_resume_subscription', [WC_Solid_Gateway_Subscribe::get_instance(), 'resume_subscription']);
+    add_action('wp_ajax_nopriv_solid_resume_subscription', [WC_Solid_Gateway_Subscribe::get_instance(), 'resume_subscription']);
+    add_action('woocommerce_subscription_status_updated', [WC_Solid_Gateway_Subscribe::get_instance(), 'send_status_change_to_gateway'], 10, 3);
 }
 
 /**
@@ -55,7 +56,7 @@ function solid_gateway_subscribe_init() {
  */
 function solid_add_subscribe_gateway_class($gateways) {
     if (class_exists('WC_Solid_Gateway_Subscribe')) {
-        $gateways[] = 'WC_Solid_Gateway_Subscribe';
+        $gateways[] = WC_Solid_Gateway_Subscribe::get_instance();
     }
     return $gateways;
 }
@@ -78,4 +79,3 @@ function woocommerce_solid_subscribe_outdated_wc_notice() {
     echo esc_html( sprintf('This version of WooCommerce Solid Payment Gateway Subscribe requires WooCommerce %s or newer.', WOOCOMMERCE_GATEWAY_SOLID_SUBSCRIBE_MIN_WC_VERSION ) );
     echo '</p></div>';
 }
-
