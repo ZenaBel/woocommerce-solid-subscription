@@ -14,7 +14,7 @@ jQuery(document).ready(function($) {
                 type: stopDate ? 'specific_date' : 'immediate',
                 date: stopDate || null,
             },
-            order_id: pauseSubscriptionData.order_id,
+            subscription_id: pauseSubscriptionData.subscription_id,
         };
 
         console.log(pauseSubscriptionData.ajaxurl, data);
@@ -45,7 +45,7 @@ jQuery(document).on('click', '#remove_pause_request', function () {
     const data = {
         action: 'solid_resume_subscription', // WordPress AJAX action
         _nonce: pauseSubscriptionData.nonce, // Nonce для захисту
-        order_id: pauseSubscriptionData.order_id,
+        subscription_id: pauseSubscriptionData.subscription_id,
     };
 
     console.log(pauseSubscriptionData.ajaxurl, data);
