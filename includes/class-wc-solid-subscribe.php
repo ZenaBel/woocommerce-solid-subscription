@@ -1662,6 +1662,89 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             }
         }
 
+        public function display_subscription_restore_meta_box($post)
+        {
+            $subscription = wcs_get_subscription($post->ID);
+            $subscription_mapping = WC_Solid_Subscribe_Model::get_subscription_mapping_by_subscription_id($post->ID);
+
+            if ($subscription_mapping) {
+                $subscription_id = $subscription_mapping->uuid;
+            } else {
+                return;
+            }
+
+            if (!$subscription_id && !in_array($subscription->get_status(), ['cancelled', 'expired'])) {
+                echo '<p>' . __('This order is not linked to any subscription.', 'textdomain') . '</p>';
+                return;
+            }
+
+            echo '<button type="button" id="send_restore_request" class="button button-primary" style="margin-top: 10px;">';
+            echo __('Restore Subscription', 'textdomain');
+            echo '</button>';
+        }
+
+        public function display_product_meta_box($post)
+        {
+            // Отримуємо ID продукту
+            $product_id = $post->ID;
+
+            // Отримуємо Solidgate Product ID
+            $solidgate_product_id = WC_Solid_Product_Model::get_product_mapping_by_product_id($product_id)->uuid;
+
+            if (!$solidgate_product_id) {
+                echo '<p>' . __('This product is not linked to any Solidgate product.', 'textdomain') . '</p>';
+                return;
+            }
+
+            // Запит до API для отримання деталей продукту
+            $response = $this->api->getProduct($solidgate_product_id);
+
+            if (is_wp_error($response)) {
+                echo '<p>' . __('Failed to retrieve product details.', 'textdomain') . '</p>';
+                return;
+            }
+
+            $product_details = json_decode($response);
+
+            if (!empty($product_details)) {
+                echo '<p><strong>' . __('Product ID:', 'textdomain') . '</strong> ' . esc_html($product_details->id ?? 'N/A') . '</p>';
+                echo '<p><strong>' . __('Name:', 'textdomain') . '</strong> ' . esc_html($product_details->name ?? 'N/A') . '</p>';
+                echo '<p><strong>' . __('Description:', 'textdomain') . '</strong> ' . esc_html($product_details->description ?? 'N/A') . '</p>';
+                echo '<p><strong>' . __('Public Description:', 'textdomain') . '</strong> ' . esc_html($product_details->public_description ?? 'N/A') . '</p>';
+                echo '<p><strong>' . __('Status:', 'textdomain') . '</strong> ' . esc_html($product_details->status ?? 'N/A') . '</p>';
+                echo '<p><strong>' . __('Created At:', 'textdomain') . '</strong> ' . esc_html($product_details->created_at ?? 'N/A') . '</p>';
+                echo '<p><strong>' . __('Updated At:', 'textdomain') . '</strong> ' . esc_html($product_details->updated_at ?? 'N/A') . '</p>';
+                echo '<p><strong>' . __('Term Length:', 'textdomain') . '</strong> ' . esc_html($product_details->term_length ?? 'N/A') . '</p>';
+                echo '<p><strong>' . __('Payment Action:', 'textdomain') . '</strong> ' . esc_html($product_details->payment_action ?? 'N/A') . '</p>';
+                echo '<p><strong>' . __('Settle Interval:', 'textdomain') . '</strong> ' . esc_html($product_details->settle_interval ?? 'N/A') . '</p>';
+
+                if (!empty($product_details->billing_period)) {
+                    echo '<hr>';
+                    echo '<h4>' . __('Billing Period', 'textdomain') . '</h4>';
+                    echo '<p><strong>' . __('Unit:', 'textdomain') . '</strong> ' . esc_html($product_details->billing_period->unit ?? 'N/A') . '</p>';
+                    echo '<p><strong>' . __('Value:', 'textdomain') . '</strong> ' . esc_html($product_details->billing_period->value ?? 'N/A') . '</p>';
+                }
+
+                if (!empty($product_details->trial)) {
+                    echo '<hr>';
+                    echo '<h4>' . __('Trial Details', 'textdomain') . '</h4>';
+                    echo '<p><strong>' . __('Billing Period Unit:', 'textdomain') . '</strong> ' . esc_html($product_details->trial->billing_period->unit ?? 'N/A') . '</p>';
+                    echo '<p><strong>' . __('Billing Period Value:', 'textdomain') . '</strong> ' . esc_html($product_details->trial->billing_period->value ?? 'N/A') . '</p>';
+                    echo '<p><strong>' . __('Payment Action:', 'textdomain') . '</strong> ' . esc_html($product_details->trial->payment_action ?? 'N/A') . '</p>';
+                    echo '<p><strong>' . __('Settle Interval:', 'textdomain') . '</strong> ' . esc_html($product_details->trial->settle_interval ?? 'N/A') . '</p>';
+                }
+
+                if (!empty($product_details->tax)) {
+                    echo '<hr>';
+                    echo '<h4>' . __('Tax Details', 'textdomain') . '</h4>';
+                    echo '<p><strong>' . __('Tax Profile ID:', 'textdomain') . '</strong> ' . esc_html($product_details->tax->profile_id ?? 'N/A') . '</p>';
+                    echo '<p><strong>' . __('Tax Included:', 'textdomain') . '</strong> ' . esc_html($product_details->tax->is_included ? __('Yes', 'textdomain') : __('No', 'textdomain')) . '</p>';
+                }
+            } else {
+                echo '<p>' . __('No product details found.', 'textdomain') . '</p>';
+            }
+        }
+
         public function pause_subscription()
         {
             if (!isset($_POST['_nonce']) || !wp_verify_nonce($_POST['_nonce'], 'pause_subscription_nonce')) {
@@ -1798,6 +1881,140 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                 WC_Solid_Subscribe_Logger::alert('Remove Pause Subscription Exception: ' . print_r($e, true));
                 wp_send_json_error(['message' => 'Failed to remove subscription pause']);
             }
+        }
+
+        public function restore_subscription()
+        {
+            if (!isset($_POST['_nonce']) || !wp_verify_nonce($_POST['_nonce'], 'pause_subscription_nonce')) {
+                wp_send_json_error(['message' => 'Invalid nonce']);
+            }
+
+            WC_Solid_Subscribe_Logger::debug('Restore Subscription Request: ' . print_r($_POST, true));
+
+            if (!empty($_POST['subscription_id'])) {
+                $subscription_id = sanitize_text_field($_POST['subscription_id']);
+            } else {
+                wp_send_json_error(['message' => 'Subscription Id is required']);
+            }
+
+            try {
+                $subscription_mapping = WC_Solid_Subscribe_Model::get_subscription_mapping_by_subscription_id($subscription_id);
+
+                if ($subscription_mapping) {
+                    $subscription_uuid = $subscription_mapping->uuid;
+                } else {
+                    wp_send_json_error(['message' => 'Subscription not found']);
+                    return;
+                }
+
+                $data = [
+                    'subscription_id' => $subscription_uuid,
+                ];
+
+                $response = $this->api->reactivateSubscription($data);
+
+                WC_Solid_Subscribe_Logger::debug('Restore Subscription Response: ' . print_r($response, true));
+
+                if (!is_wp_error($response)) {
+                    $body = json_decode($response, true);
+                    if ($body['status'] === 'ok') {
+                        WC_Solid_Subscribe_Logger::debug('Очіукую що помилка тут');
+                        $new_subscription_id = $this->renew_subscription($subscription_id, $subscription_uuid);
+                        WC_Solid_Subscribe_Logger::debug('New Subscription ID: ' . print_r($new_subscription_id, true));
+                        wp_send_json_success(['message' => 'Subscription restored successfully', 'url' => get_edit_post_link($new_subscription_id)]);
+                    } else {
+                        wp_send_json_error(['message' => 'Failed to restore subscription']);
+                    }
+
+                } else {
+                    wp_send_json_error(['message' => 'Failed to restore subscription']);
+                }
+            } catch (Exception $e) {
+                WC_Solid_Subscribe_Logger::alert('Restore Subscription Exception: ' . print_r($e, true));
+                wp_send_json_error(['message' => 'Failed to restore subscription']);
+            }
+        }
+
+        /**
+         * Створення нової підписки, як сутність
+         *
+         * @param $subscription_id
+         * @return bool|int
+         */
+        public function renew_subscription($subscription_id, $subscription_uuid)
+        {
+            $order_id = wcs_get_subscription($subscription_id)->get_parent_id();
+            $order = wc_get_order($order_id);
+
+            $old_subscription = wcs_get_subscription($subscription_id);
+
+            if (!$order_id) {
+                WC_Solid_Subscribe_Logger::debug('Order ID is missing for subscription ID: ' . $subscription_id);
+                return false;
+            }
+            if (!$order) {
+                WC_Solid_Subscribe_Logger::debug('Order object could not be loaded for order ID: ' . $order_id);
+                return false;
+            }
+
+            WC_Solid_Subscribe_Logger::debug('Old Subscription ID: ' . print_r($old_subscription->get_id(), true));
+
+            try {
+                if ($order) {
+                    $new_subscription = wcs_create_subscription([
+                        'order_id' => $order_id,
+                        'billing_period' => $old_subscription->get_billing_period(),
+                        'billing_interval' => $old_subscription->get_billing_interval(),
+                    ]);
+
+                    WC_Solid_Subscribe_Logger::debug('New Subscription ID: ' . print_r($new_subscription, true));
+
+                    $new_subscription->set_trial_end_date($old_subscription->get_date('trial_end'));
+                    $new_subscription->set_payment_method($old_subscription->get_payment_method());
+                    $new_subscription->set_start_date($old_subscription->get_date('start'));
+                    $new_subscription->set_end_date($old_subscription->get_date('end'));
+                    $new_subscription->set_customer_id($old_subscription->get_customer_id());
+                    $new_subscription->set_payment_method($old_subscription->get_payment_method());
+                    $new_subscription->set_customer_note(
+                        sprintf(__('Subscription renewed from #%s', 'textdomain'), $old_subscription->get_id())
+                    );
+
+                    foreach ($old_subscription->get_items() as $item) {
+                        $product = $item->get_product();
+                        if (!$product) {
+                            WC_Solid_Subscribe_Logger::alert('Product is missing for item in subscription ID: ' . $old_subscription->get_id());
+                            continue;
+                        }
+
+                        $new_subscription->add_product(
+                            $product,
+                            $item->get_quantity()
+                        );
+                    }
+
+                    $new_subscription->calculate_totals();
+
+                    $new_subscription->update_status('active');
+
+                    $new_subscription->save();
+
+                    WC_Solid_Subscribe_Logger::debug('New Subscription ID: ' . print_r($new_subscription->get_id(), true));
+
+                    if (WC_Solid_Subscribe_Model::get_subscription_mapping_by_uuid($subscription_uuid)) {
+                        WC_Solid_Subscribe_Model::update_subscription_mapping($subscription_uuid, $new_subscription->get_id());
+                    } else {
+                        WC_Solid_Subscribe_Model::create_subscription_mapping($new_subscription->get_id(), $subscription_uuid);
+                    }
+
+                    return $new_subscription->get_id();
+                }
+            } catch (Exception $e) {
+                WC_Solid_Subscribe_Logger::alert('Renew Subscription Exception: ' . $e->getMessage());
+            }
+
+            WC_Solid_Subscribe_Logger::debug('Failed to renew subscription я що тут');
+
+            return false;
         }
 
         public function send_status_change_to_gateway($subscription, $new_status, $old_status)
