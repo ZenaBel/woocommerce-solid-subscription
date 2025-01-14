@@ -123,6 +123,16 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             });
 
             add_action('save_post', [$this, 'save_product_list']);
+        }
+
+        public static function get_instance(): ?WC_Solid_Gateway_Subscribe
+        {
+            if (self::$instance === null) {
+                self::$instance = new self();
+            }
+            return self::$instance;
+        }
+
         public function save_product_list($post_id) {
             // Перевірка nonce
             if (!isset($_POST['country_list_nonce']) || !wp_verify_nonce($_POST['country_list_nonce'], 'save_country_list')) {
@@ -696,15 +706,6 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                 return false;
             }
         }
-
-        public static function get_instance()
-        {
-            if (self::$instance === null) {
-                self::$instance = new self();
-            }
-            return self::$instance;
-        }
-
 
         /**
          * Init required js and css assets
