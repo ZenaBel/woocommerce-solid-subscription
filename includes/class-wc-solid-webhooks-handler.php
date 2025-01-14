@@ -405,12 +405,20 @@ class WC_Solid_Subscribe_Webhook_Handler {
                         break;
                     case 'cancel':
                         $this->process_cancel_subscription( $notification );
+                        break;
                     case 'renew':
                     case 'restore':
                         $this->process_renew_subscription( $notification );
                         break;
                     case 'expire':
                         $this->process_expire_subscription( $notification );
+                        break;
+                    case 'pause_schedule.create':
+                    case 'pause_schedule.update':
+                        $this->process_pause_schedule_create( $notification );
+                        break;
+                    case 'pause_schedule.delete':
+                        $this->process_pause_schedule_delete( $notification );
                         break;
                     default:
                         WC_Solid_Subscribe_Logger::debug( sprintf( 'Необработанный hook: %1$s -> %2$s', $type, $notification->callback_type ) );
@@ -422,4 +430,16 @@ class WC_Solid_Subscribe_Webhook_Handler {
                break;
        }
    }
+
+    /**
+     * Повертає ID підписки по UUID підписки
+     *
+     * @param $subscription_uuid - UUID підписки
+     * @return mixed|null
+     */
+    private function get_subscription_id($subscription_uuid)
+    {
+        $mapping = WC_Solid_Subscribe_Model::get_subscription_mapping_by_uuid($subscription_uuid);
+        return $mapping->subscription_id ?? null;
+    }
 }
