@@ -296,6 +296,75 @@ class WC_Solid_Subscribe_Webhook_Handler {
         WC_Subscriptions_Manager::expire_subscriptions_for_order( $order_id );
     }
 
+    public function process_pause_schedule_create($notification)
+    {
+        WC_Solid_Subscribe_Logger::debug( 'Получено уведомление о паузе подписки: ' . json_encode( $notification ) );
+        $order_id = $this->get_subscription_id($notification);
+
+        WC_Solid_Subscribe_Logger::debug( '(pause_schedule.create) ID заказа: ' . $order_id );
+
+        $subscription_id = $notification->subscription->id ?? null;
+
+        WC_Solid_Subscribe_Logger::debug( '(pause_schedule.create) ID заказа: ' . $order_id );
+        WC_Solid_Subscribe_Logger::debug( '(pause_schedule.create) ID подписки: ' . $subscription_id );
+
+        $order = wc_get_order( $order_id );
+        if ( ! $order ) {
+            WC_Solid_Subscribe_Logger::alert( 'Не удалось найти заказ по ID заказа: ' . $order_id );
+            return;
+        }
+
+        $subscriptions = wcs_get_subscriptions_for_order($order);
+
+        foreach ($subscriptions as $subscription) {
+            if ($subscription->has_status(['active', 'on-hold'])) {
+                $start_point = get_post_meta($subscription->get_id(), '_pause_start_point', true);
+                $stop_point = get_post_meta($subscription->get_id(), '_pause_stop_point', true);
+                if ($start_point && $stop_point) {
+                    update_post_meta($subscription->get_id(), '_pause_start_point', date($notification->subscription->pause->from_date, 'Y-m-d'));
+                    update_post_meta($subscription->get_id(), '_pause_stop_point', date($notification->subscription->pause->to_date, 'Y-m-d'));
+                } else {
+                    add_post_meta($subscription->get_id(), '_pause_start_point', date($notification->subscription->pause->from_date, 'Y-m-d'));
+                    add_post_meta($subscription->get_id(), '_pause_stop_point', date($notification->subscription->pause->to_date, 'Y-m-d'));
+                }
+                $subscription->update_status('on-hold', __('Subscription paused via Solid Dashboard', 'wc-solid'));
+                $subscription->set_next_payment_date($notification->subscription->pause->to_date);
+            }
+        }
+    }
+
+    public function process_pause_schedule_delete($notification)
+    {
+        WC_Solid_Subscribe_Logger::debug( 'Получено уведомление о паузе подписки: ' . json_encode( $notification ) );
+        $order_id = $this->get_subscription_id($notification);
+
+        $subscription_id = $notification->subscription->id ?? null;
+
+        WC_Solid_Subscribe_Logger::debug( '(pause_schedule.delete) ID заказа: ' . $order_id );
+        WC_Solid_Subscribe_Logger::debug( '(pause_schedule.delete) ID подписки: ' . $subscription_id );
+
+        $order = wc_get_order( $order_id );
+        if ( ! $order ) {
+            WC_Solid_Subscribe_Logger::alert( 'Не удалось найти заказ по ID заказа: ' . $order_id );
+            return;
+        }
+
+        $subscriptions = wcs_get_subscriptions_for_order($order);
+
+        foreach ($subscriptions as $subscription) {
+            if ($subscription->has_status(['on-hold'])) {
+                $start_point = get_post_meta($subscription->get_id(), '_pause_start_point', true);
+                $stop_point = get_post_meta($subscription->get_id(), '_pause_stop_point', true);
+                if ($start_point && $stop_point) {
+                    delete_post_meta($subscription->get_id(), '_pause_start_point');
+                    delete_post_meta($subscription->get_id(), '_pause_stop_point');
+                }
+                $subscription->update_status('active', __('Subscription unpaused via Solid Dashboard', 'wc-solid'));
+                $subscription->set_next_payment_date($notification->subscription->next_charge_at);
+            }
+        }
+    }
+
     /**
     * Обрабатывает входящий webhook.
     *
