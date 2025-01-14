@@ -108,6 +108,143 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                     'subscription_id' => $_GET['post'] ?? 0,
                 ]);
             });
+            add_action('woocommerce_new_order_item', [$this, 'handle_subscription_item_added'], 10, 3);
+            add_action('woocommerce_before_delete_order_item', [$this, 'handle_subscription_item_removed'], 10, 2);
+        public function handle_subscription_item_added($item_id, $item, $order_id) {
+            $subscription = wcs_get_subscription($order_id);
+
+            if (!$subscription) {
+                return;
+            }
+
+            if ($subscription->get_payment_method() !== $this->id) {
+                return;
+            }
+
+            if ($subscription->get_status() !== 'active') {
+                return;
+            }
+
+            if (count($subscription->get_items()) > 1) {
+                return;
+            }
+
+            $item = current($subscription->get_items());
+
+            $product_id = $item->get_product_id();
+
+            $product_uuid = WC_Solid_Product_Model::get_product_mapping_by_product_id($product_id)->uuid;
+
+            if (!$product_uuid) {
+                return;
+            }
+
+            $subscription_uuid = WC_Solid_Subscribe_Model::get_subscription_mapping_by_subscription_id($subscription->get_id())->uuid;
+
+            WC_Solid_Subscribe_Logger::debug('$product_uuid: ' . print_r($product_uuid, true));
+            WC_Solid_Subscribe_Logger::debug('$subscription_uuid: ' . print_r($subscription_uuid, true));
+
+            if (!$subscription_uuid) {
+                return;
+            }
+
+            $is_switch_product = $this->switch_product_subscription($product_uuid, $subscription_uuid);
+
+            if ($is_switch_product) {
+                $subscription->add_order_note(
+                    sprintf(
+                        __('Subscription product was switched to %s', 'wc-solid'),
+                        get_the_title($product_id)
+                    )
+                );
+            }
+
+            WC_Solid_Subscribe_Logger::debug('$product_uuid: ' . print_r($product_uuid, true));
+
+            WC_Solid_Subscribe_Logger::debug('woocommerce_new_order_item: ' . print_r($item_id, true) . "\n" . print_r($item, true) . "\n" . print_r($order_id, true));
+        }
+
+        public function handle_subscription_item_removed($item_id)
+        {
+            global $wpdb;
+            $order_id = $wpdb->get_var($wpdb->prepare(
+                "SELECT order_id FROM {$wpdb->prefix}woocommerce_order_items WHERE order_item_id = %d",
+                $item_id
+            ));
+            WC_Solid_Subscribe_Logger::debug("Order ID: $order_id");
+
+            // Отримати підписку
+            $subscription = wcs_get_subscription($order_id);
+
+            // Отримати деталі про підписку
+            if (!$subscription) {
+                return;
+            }
+
+            if ($subscription->get_payment_method() !== $this->id) {
+                return;
+            }
+
+            if ($subscription->get_status() !== 'active') {
+                return;
+            }
+
+            if (count($subscription->get_items()) > 1 || count($subscription->get_items()) == 0) {
+                return;
+            }
+
+            $item = current($subscription->get_items());
+
+            $product_id = $item->get_product_id();
+
+            $product_uuid = WC_Solid_Product_Model::get_product_mapping_by_product_id($product_id)->uuid;
+
+            if (!$product_uuid) {
+                return;
+            }
+
+            $subscription_uuid = WC_Solid_Subscribe_Model::get_subscription_mapping_by_subscription_id($subscription->get_id())->uuid;
+
+            $is_switch_product = $this->switch_product_subscription($product_uuid, $subscription_uuid);
+
+            if ($is_switch_product) {
+                $subscription->add_order_note(
+                    sprintf(
+                        __('Subscription product was switched to %s', 'wc-solid'),
+                        get_the_title($product_id)
+                    )
+                );
+            }
+
+            WC_Solid_Subscribe_Logger::debug("(ID: $item_id) is being deleted from subscription #{$subscription->get_id()}");
+        }
+
+        public function switch_product_subscription($new_product_uuid, $subscription_uuid): bool
+        {
+            $data = [
+                'subscription_id' => $subscription_uuid,
+                'new_product_id' => $new_product_uuid,
+            ];
+
+            $response = $this->api->switchProductSubscription($data);
+
+            WC_Solid_Subscribe_Logger::debug('Switch product subscription response: ' . print_r($response, true));
+
+            if (!is_wp_error($response)) {
+                $subscription = WC_Solid_Subscribe_Model::get_subscription_mapping_by_uuid($subscription_uuid);
+                $product = WC_Solid_Product_Model::get_product_mapping_by_uuid($new_product_uuid);
+
+                if ($subscription) {
+                    $subscription_id = $subscription->subscription_id;
+                    $product_id = $product->product_id;
+                    WC_Solid_Product_Model::update_product_mapping($subscription_id, $product_id);
+                }
+                return true;
+            } else {
+                $notice = __('Switching product subscription failed', 'wc-solid');
+                set_transient('solidgate_sync_notice', $notice, 30);
+                return false;
+            }
         }
 
         public static function get_instance()
