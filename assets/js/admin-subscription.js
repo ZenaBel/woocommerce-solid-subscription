@@ -1,5 +1,5 @@
-jQuery(document).ready(function($) {
-    $('#send_pause_request').on('click', function() {
+jQuery(document).ready(function ($) {
+    $('#send_pause_request').on('click', function () {
         const startDate = $('#pause_start_date').val();
         const stopDate = $('#pause_stop_date').val();
 
@@ -22,7 +22,7 @@ jQuery(document).ready(function($) {
         let node = this;
 
         // AJAX-запит до WordPress
-        $.post(pauseSubscriptionData.ajaxurl, data, function(response) {
+        $.post(pauseSubscriptionData.ajaxurl, data, function (response) {
             if (response.success) {
                 showAdminNotice('success', 'Subscription paused successfully!');
                 if ($(node).closest('.inside').find('#remove_pause_request').length === 0) {
@@ -35,7 +35,7 @@ jQuery(document).ready(function($) {
                 showAdminNotice('error', 'Error pausing subscription: ' + (response.data.message || 'Unknown error'));
                 console.error(response);
             }
-        }).fail(function(xhr) {
+        }).fail(function (xhr) {
             showAdminNotice('error', 'AJAX request failed: ' + xhr.status + ' ' + xhr.statusText);
             console.error(xhr);
         });
@@ -67,6 +67,7 @@ jQuery(document).on('click', '#remove_pause_request', function () {
         showAdminNotice('error', 'AJAX request failed: ' + xhr.status + ' ' + xhr.statusText);
     });
 });
+
 /**
  * Функція для показу повідомлень у стилі WordPress
  * @param {string} type - 'success' або 'error'
@@ -91,3 +92,25 @@ function showAdminNotice(type, message) {
         jQuery(this).closest('.notice').remove();
     });
 }
+
+jQuery(document).on('click', '#send_restore_request', function () {
+    const data = {
+        action: 'solid_restore_subscription', // WordPress AJAX action
+        _nonce: pauseSubscriptionData.nonce, // Nonce для захисту
+        subscription_id: pauseSubscriptionData.subscription_id,
+    };
+
+    console.log(pauseSubscriptionData.ajaxurl, data);
+
+    // AJAX-запит до WordPress
+    jQuery.post(pauseSubscriptionData.ajaxurl, data, function (response) {
+        if (response.success) {
+            showAdminNotice('success', response.data.message + ' <a href="' + response.data.url + '">View subscription</a>');
+            window.location = response.data.url;
+        } else {
+            showAdminNotice('error', 'Error resuming subscription: ' + (response.data.message || 'Unknown error'));
+        }
+    }).fail(function (xhr) {
+        showAdminNotice('error', 'AJAX request failed: ' + xhr.status + ' ' + xhr.statusText);
+    });
+});
