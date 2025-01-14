@@ -10,6 +10,19 @@ if (!defined('ABSPATH')) {
 
 if (!class_exists('WC_Solid_Gateway_Subscribe')) {
 
+    /**
+     * @property WC_Solid_Subscribe_Webhook_Handler $hooks
+     * @property string $logging
+     * @property string $google_pay_merchant_id
+     * @property string $payment_public_name
+     * @property string $payment_methods
+     * @property string $private_key
+     * @property string $integration_type
+     * @property string $public_key
+     * @property string $webhook_private_key
+     * @property string $webhook_public_key
+     * @property ApiCustom $api
+     */
     class WC_Solid_Gateway_Subscribe extends WC_Payment_Gateway
     {
         private static $instance = null;
