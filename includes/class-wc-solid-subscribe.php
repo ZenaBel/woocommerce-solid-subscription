@@ -960,7 +960,7 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
 
             $items_str = '';
             $order_description = '';
-            $subscription_product_id = '';
+            $price_id = '';
             $is_subscription = false;
 
             // Проходимо по товарах у замовленні
@@ -975,7 +975,29 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                     $free_trial_duration = WC_Subscriptions_Product::get_trial_length($product_id);
                     $free_trial_period = WC_Subscriptions_Product::get_trial_period($product_id);
                     $sign_up_fee = WC_Subscriptions_Product::get_sign_up_fee($product_id);
-                    $subscription_product_id = get_post_meta($product_id, '_solidgate_product_id', true);
+                    $subscription_product_id = WC_Solid_Product_Model::get_product_mapping_by_product_id($product_id)->uuid;
+
+                    $body_price = [
+                        'product_id' => $subscription_product_id,
+                        'location' => [
+                            'ip_address' => $_SERVER['REMOTE_ADDR'],
+                        ],
+                    ];
+
+                    WC_Solid_Subscribe_Logger::debug('Price calculation request: ' . print_r($body_price, true));
+
+                    $response = $this->api->calculatePrice($body_price);
+
+                    WC_Solid_Subscribe_Logger::debug('Price calculation response: ' . print_r($response, true));
+
+                    if (!is_wp_error($response)) {
+                        $body = json_decode($response, true);
+                        $price_id = $body['price_id'];
+                        WC_Solid_Subscribe_Logger::debug('Price ID: ' . print_r($price_id, true));
+                    } else {
+                        WC_Solid_Subscribe_Logger::debug('Price calculation failed: ' . print_r($response, true));
+                        $price_id = $subscription_product_id;
+                    }
 
                     WC_Solid_Subscribe_Logger::debug('Subscription product ID: ' . print_r($subscription_product_id, true));
 
@@ -1015,7 +1037,7 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
 
             // Додаткові дані для підписки
             if ($is_subscription) {
-                $common_order_data['product_price_id'] = $subscription_product_id;
+                $common_order_data['product_price_id'] = $price_id;
                 $common_order_data['customer_account_id'] = $order->get_customer_id() . '_' . $order->get_billing_email();
             } else {
                 // Додаткові дані для звичайного товару
@@ -1023,6 +1045,8 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                 $common_order_data['amount'] = round($order->get_total() * 100);
                 $common_order_data["google_pay_merchant_id"] = $this->google_pay_merchant_id;
             }
+
+            WC_Solid_Subscribe_Logger::debug('Common order data: ' . print_r($common_order_data, true));
 
             return $common_order_data;
         }
