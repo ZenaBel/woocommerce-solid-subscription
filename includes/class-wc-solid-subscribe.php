@@ -88,6 +88,8 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             add_action('woocommerce_payment_complete', [$this, 'create_subscription'], 10, 1);
             add_action('add_meta_boxes', [$this, 'add_subscription_meta_box']);
             add_action('add_meta_boxes', [$this, 'add_pause_meta_box']);
+            add_action('add_meta_boxes', [$this, 'add_restore_subscription_meta_box']);
+            add_action('add_meta_boxes', [$this, 'add_product_meta_box']);
             add_action('admin_notices', [$this, 'display_admin_notices']);
             add_action('admin_enqueue_scripts', function () {
                 $nonce = wp_create_nonce('pause_subscription_nonce');
@@ -944,14 +946,89 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
 
         public function add_pause_meta_box()
         {
-            add_meta_box(
-                'pause_meta_box',              // ID метабокса
-                __('Subscription Pause', 'textdomain'),
-                [$this, 'display_subscription_pause_meta_box'],
-                'shop_subscription',
-                'side',
-                'high'
-            );
+            global $post;
+
+            $subscription = wcs_get_subscription($post->ID);
+
+            if (!($subscription instanceof WC_Subscription)) {
+                return;
+            }
+
+            $subscription_mapping = WC_Solid_Subscribe_Model::get_subscription_mapping_by_subscription_id($subscription->get_id());
+
+            if ($subscription_mapping) {
+                $subscription_id = $subscription_mapping->uuid;
+            } else {
+                return;
+            }
+
+            if ($subscription_id && !in_array($subscription->get_status(), ['expired', 'cancelled'])) {
+                add_meta_box(
+                    'pause_meta_box',              // ID метабокса
+                    __('Subscription Pause', 'textdomain'),
+                    [$this, 'display_subscription_pause_meta_box'],
+                    'shop_subscription',
+                    'side',
+                    'high'
+                );
+            }
+        }
+
+        public function add_restore_subscription_meta_box()
+        {
+            global $post;
+
+            $subscription = wcs_get_subscription($post->ID);
+
+            if (!($subscription instanceof WC_Subscription)) {
+                return;
+            }
+
+            $subscription_mapping = WC_Solid_Subscribe_Model::get_subscription_mapping_by_subscription_id($subscription->get_id());
+
+            if ($subscription_mapping) {
+                $subscription_id = $subscription_mapping->uuid;
+            } else {
+                return;
+            }
+
+            if ($subscription_id && in_array($subscription->get_status(), ['cancelled', 'expired'])) {
+                add_meta_box(
+                    'restore_meta_box',              // ID метабокса
+                    __('Subscription Restore', 'textdomain'),
+                    [$this, 'display_subscription_restore_meta_box'],
+                    'shop_subscription',
+                    'side',
+                    'high'
+                );
+            }
+        }
+
+        public function add_product_meta_box()
+        {
+            global $post;
+
+            $product = wc_get_product($post->ID);
+
+            if ($product instanceof WC_Product) {
+                $product_id = $product->get_id();
+            } else {
+                return;
+            }
+
+            $product_mapping = WC_Solid_Product_Model::get_product_mapping_by_product_id($product_id);
+            $solidgate_product_id = $product_mapping ? $product_mapping->uuid : null;
+
+            if ($solidgate_product_id) {
+                add_meta_box(
+                    'product_meta_box',              // ID метабокса
+                    __('Solidgate Product Details', 'textdomain'), // Назва метабокса
+                    [$this, 'display_product_meta_box'],      // Функція, яка виводить контент метабокса
+                    'product',                    // Тип поста, для якого виводиться метабокс
+                    'side',                               // Розташування (side для правої колонки)
+                    'high'                                // Пріоритет відображення
+                );
+            }
         }
 
         public function display_subscription_meta_box($post)
