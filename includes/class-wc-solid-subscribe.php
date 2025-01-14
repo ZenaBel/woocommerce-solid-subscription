@@ -110,6 +110,456 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             });
             add_action('woocommerce_new_order_item', [$this, 'handle_subscription_item_added'], 10, 3);
             add_action('woocommerce_before_delete_order_item', [$this, 'handle_subscription_item_removed'], 10, 2);
+
+            add_action('add_meta_boxes', function () {
+                add_meta_box(
+                    'custom_repeater', // ID метабоксу
+                    'Country List', // Заголовок
+                    [$this, 'render_country_list_meta_box'], // Функція рендеру
+                    'product', // Пост-тип
+                    'normal', // Розташування
+                    'default' // Пріоритет
+                );
+            });
+
+            add_action('save_post', [$this, 'save_product_list']);
+        public function save_product_list($post_id) {
+            // Перевірка nonce
+            if (!isset($_POST['country_list_nonce']) || !wp_verify_nonce($_POST['country_list_nonce'], 'save_country_list')) {
+                return;
+            }
+
+            // Перевірка прав
+            if (!current_user_can('edit_post', $post_id)) {
+                return;
+            }
+
+            // Отримання існуючих даних
+            $existing_items = WC_Solid_Product_List::get_product_list_by_product_id($post_id);
+
+            $existing_keys = [];
+            if ($existing_items) {
+                foreach ($existing_items as $item) {
+                    $existing_keys[] = $item->uuid;
+                }
+            }
+
+            // Збереження даних
+            $product_mapping = WC_Solid_Product_Model::get_product_mapping_by_product_id($post_id);
+            if (!$product_mapping) {
+                return;
+            }
+            $product_uuid = $product_mapping->uuid;
+
+            $response = $this->api->getProduct($product_uuid);
+
+            if (is_wp_error($response)) {
+                $admin_notice = __('Failed to get product details.', 'wc-solid');
+                set_transient('solidgate_sync_notice', $admin_notice, 30);
+                return;
+            }
+
+            $product_solid = json_decode($response);
+
+            $is_trial = $product_solid->trial ?? false;
+
+            if (isset($_POST['country_list']) && is_array($_POST['country_list'])) {
+
+                $submitted_keys = []; // Для зберігання нових UUID
+
+                foreach ($_POST['country_list'] as $product) {
+                    if (empty($product['currency']) || empty($product['price']) || empty(sanitize_text_field($product['country_name']))) {
+                        // Логування помилки
+                        WC_Solid_Subscribe_Logger::debug('Validation failed for product: ' . print_r($product, true));
+
+                        $admin_notice = __('Validation failed for product. Fields "Currency", "Price" and "Country" are required.', 'wc-solid');
+                        set_transient('solidgate_sync_notice', $admin_notice, 30);
+                        continue;
+                    }
+
+                    if ($is_trial && empty($product['sign_up_fee'])) {
+                        $admin_notice = __('Validation failed for product. Fields "Currency", "Price", "Country" and "Sign-up Fee" are required.', 'wc-solid');
+                        set_transient('solidgate_sync_notice', $admin_notice, 30);
+                        continue;
+                    }
+
+                    // Отримання існуючого елемента, якщо такий є
+                    if ($item = WC_Solid_Product_List::get_product_list_by_country_name_and_currency($post_id, $product['country_name'], $product['currency'])) {
+                        // Оновлення, якщо дані змінилися
+                        if ($item->price != $product['price'] || $item->sign_up_fee != $product['sign_up_fee']) {
+                            $body = [
+                                'status' => 'active',
+                                'product_price' => (int)($product['price'] * 100),
+                                'currency' => sanitize_text_field($product['currency']),
+                                'country' => sanitize_text_field($product['country_name']),
+                            ];
+
+                            if ($product['sign_up_fee']) {
+                                $body['trial_price'] = (int)($product['sign_up_fee'] * 100);
+                            }
+
+                            $response = $this->api->updatePrice($product_uuid, $item->uuid, $body);
+
+                            WC_Solid_Subscribe_Logger::debug('Update product list response: ' . print_r($response, true));
+
+                            if (!is_wp_error($response)) {
+                                WC_Solid_Subscribe_Logger::debug('Update product list response: ' . print_r($response, true));
+                                $price_uuid = json_decode($response, true)['id'];
+
+                                $data = [
+                                    'product_id' => $post_id,
+                                    'uuid' => $price_uuid,
+                                    'price_id' => $price_uuid ?? '',
+                                    'country' => $product['country_name'],
+                                    'label' => $product['label'] ?? '',
+                                    'banner_label' => $product['banner_label'] ?? '',
+                                    'class' => $product['class'] ?? '',
+                                    'score' => $product['score'] ?? '',
+                                    'currency' => $product['currency'],
+                                    'sign_up_fee' => $product['sign_up_fee'] ?? '',
+                                    'sign_up_fee_label' => $product['sign_up_fee_label'] ?? '',
+                                    'price' => $product['price'],
+                                    'price_label' => $product['price_label'] ?? '',
+                                ];
+
+                                WC_Solid_Subscribe_Logger::debug('Update product list: ' . print_r($data, true));
+
+                                WC_Solid_Product_List::update_product_list($data);
+                            }
+                        }
+
+                        $data = [
+                            'product_id' => $post_id,
+                            'uuid' => $item->uuid,
+                            'country_name' => sanitize_text_field($product['country_name']),
+                            'label' => sanitize_text_field($product['label']) ?? '',
+                            'banner_label' => sanitize_text_field($product['banner_label']) ?? '',
+                            'class' => sanitize_text_field($product['class']) ?? '',
+                            'score' => sanitize_text_field($product['score']) ?? '',
+                            'currency' => sanitize_text_field($product['currency']),
+                            'sign_up_fee' => sanitize_text_field($product['sign_up_fee']) ?? null,
+                            'sign_up_fee_label' => sanitize_text_field($product['sign_up_fee_label']) ?? '',
+                            'price' => sanitize_text_field($product['price']),
+                            'price_label' => sanitize_text_field($product['price_label']) ?? '',
+                        ];
+
+                        WC_Solid_Subscribe_Logger::debug('Update product list (no price): ' . print_r($data, true));
+
+                        WC_Solid_Product_List::update_product_list($data);
+
+                        $submitted_keys[] = $item->uuid;
+                    } else {
+                        // Додавання нового елемента
+                        $body = [
+                            'default' => false,
+                            'status' => 'active',
+                            'product_price' => (int)($product['price'] * 100),
+                            'currency' => sanitize_text_field($product['currency']),
+                            'country' => sanitize_text_field($product['country_name']),
+                        ];
+
+                        if ($product['sign_up_fee']) {
+                            $body['trial_price'] = (int)($product['sign_up_fee'] * 100);
+                        }
+
+                        $response = $this->api->createPrice($product_uuid, $body);
+
+                        WC_Solid_Subscribe_Logger::debug('Create product list response: ' . print_r($response, true));
+
+                        if (!is_wp_error($response)) {
+                            $price_uuid = json_decode($response, true)['id'];
+
+                            $data = [
+                                'product_id' => $post_id,
+                                'uuid' => $price_uuid,
+                                'country_name' => sanitize_text_field($product['country_name']),
+                                'label' => sanitize_text_field($product['label']) ?? '',
+                                'banner_label' => sanitize_text_field($product['banner_label']) ?? '',
+                                'class' => sanitize_text_field($product['class']) ?? '',
+                                'score' => sanitize_text_field($product['score']) ?? '',
+                                'currency' => sanitize_text_field($product['currency']),
+                                'sign_up_fee' => sanitize_text_field($product['sign_up_fee']) ?? null,
+                                'sign_up_fee_label' => sanitize_text_field($product['sign_up_fee_label']) ?? '',
+                                'price' => sanitize_text_field($product['price']),
+                                'price_label' => sanitize_text_field($product['price_label']) ?? '',
+                            ];
+
+                            WC_Solid_Subscribe_Logger::debug('Create product list: ' . print_r($data, true));
+
+                            WC_Solid_Product_List::create_product_list($data);
+                            $submitted_keys[] = $price_uuid;
+                        }
+                    }
+                }
+
+                // Видалення записів, які більше не існують у нових даних
+                $keys_to_delete = array_diff($existing_keys, $submitted_keys);
+
+                WC_Solid_Subscribe_Logger::debug('Keys to delete: ' . print_r($keys_to_delete, true));
+
+                foreach ($keys_to_delete as $key) {
+                    $this->api->updatePrice($product_uuid, $key, ['status' => 'disabled']);
+                    WC_Solid_Product_List::delete_product_list_by_uuid($key);
+                }
+            } else {
+
+                $keys = array_map(function ($item) {
+                    return $item->uuid;
+                }, $existing_items);
+
+                foreach ($keys as $key) {
+                    $this->api->updatePrice($product_uuid, $key, ['status' => 'disabled']);
+                    WC_Solid_Product_List::delete_product_list_by_uuid($key);
+                }
+                WC_Solid_Product_List::delete_product_list_by_product_id($post_id);
+            }
+        }
+
+        public function render_country_list_meta_box($post) {
+            // Отримуємо збережені дані
+            $country_list = WC_Solid_Product_List::get_product_list_by_product_id($post->ID);
+
+            // Якщо дані не масив — ініціалізуємо порожній масив
+            if (!is_array($country_list)) {
+                $country_list = [];
+            }
+
+            $currencies = $this->get_iso_4217_currencies();
+            $countries = $this->get_iso_3166_countries();
+
+            // Генеруємо nonce для безпеки
+            wp_nonce_field('save_country_list', 'country_list_nonce');
+            ?>
+            <div id="country-list-wrapper" class="country-list-wrapper">
+                <?php foreach ($country_list as $index => $row) : ?>
+                    <div class="country-list-row" data-index="<?php echo $index; ?>">
+                        <div class="country-list-row-inner">
+                            <div class="field">
+                                <label>Country:
+                                    <select class="select23" name="country_list[<?php echo $index; ?>][country_name]">
+                                        <option value="">Select Country</option>
+                                        <?php foreach ($countries as $country) : ?>
+                                            <option value="<?php echo esc_attr($country['code']); ?>" <?php selected($row->country_name, $country['code']); ?>>
+                                                <?php echo esc_html($country['name']); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </label>
+                            </div>
+                            <div class="field">
+                                <label>Label:</label>
+                                <input type="text" name="country_list[<?php echo $index; ?>][label]" value="<?php echo esc_attr($row->label ?? ''); ?>" placeholder="Label">
+                            </div>
+                            <div class="field">
+                                <label>Banner Label:</label>
+                                <input type="text" name="country_list[<?php echo $index; ?>][banner_label]" value="<?php echo esc_attr($row->banner_label ?? ''); ?>" placeholder="Banner Label">
+                            </div>
+                            <div class="field">
+                                <label>Class:</label>
+                                <input type="text" name="country_list[<?php echo $index; ?>][class]" value="<?php echo esc_attr($row->class ?? ''); ?>" placeholder="Class">
+                            </div>
+                            <div class="field">
+                                <label>Score:</label>
+                                <input type="number" name="country_list[<?php echo $index; ?>][score]" value="<?php echo esc_attr($row->score ?? ''); ?>" placeholder="Score">
+                            </div>
+                            <div class="field">
+                                <label>Currency:</label>
+                                <select class="select23" name="country_list[<?php echo $index; ?>][currency]">
+                                    <option value="">Select Currency</option>
+                                    <?php foreach ($currencies as $currency) : ?>
+                                        <option value="<?php echo esc_attr($currency['code']); ?>" <?php selected($row->currency, $currency['code']); ?>>
+                                            <?php echo esc_html($currency['name']); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label>Sign-up Fee:</label>
+                                <input type="number" name="country_list[<?php echo $index; ?>][sign_up_fee]" value="<?php echo esc_attr($row->sign_up_fee ?? ''); ?>" placeholder="Sign-up Fee">
+                            </div>
+                            <div class="field">
+                                <label>Sign-up Fee Label:</label>
+                                <input type="text" name="country_list[<?php echo $index; ?>][sign_up_fee_label]" value="<?php echo esc_attr($row->sign_up_fee_label ?? ''); ?>" placeholder="Sign-up Fee Label">
+                            </div>
+                            <div class="field">
+                                <label>Price:</label>
+                                <input type="number" name="country_list[<?php echo $index; ?>][price]" value="<?php echo esc_attr($row->price ?? ''); ?>" placeholder="Price">
+                            </div>
+                            <div class="field">
+                                <label>Price Label:</label>
+                                <input type="text" name="country_list[<?php echo $index; ?>][price_label]" value="<?php echo esc_attr($row->price_label ?? ''); ?>" placeholder="Price Label">
+                            </div>
+                        </div>
+                        <button type="button" class="remove-row">Remove</button>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+            <button type="button" id="add-country-row">Add Row</button>
+
+            <script>
+                (function ($) {
+                    $(document).ready(function () {
+                        // Ініціалізація Select2
+                        $('.select23').select2();
+
+                        let index = <?php echo count($country_list); ?>;
+
+                        $('#add-country-row').on('click', function () {
+                            const countryOptions = <?php echo json_encode(array_map(function ($country) {
+                                return "<option value='{$country['code']}'>{$country['name']}</option>";
+                            }, $countries)); ?>;
+                            const currencyOptions = <?php echo json_encode(array_map(function ($currency) {
+                                return "<option value='{$currency['code']}'>{$currency['name']}</option>";
+                            }, $currencies)); ?>;
+
+                            $('#country-list-wrapper').append(`
+                        <div class="country-list-row" data-index="${index}">
+                            <div class="country-list-row-inner">
+                                <div class="field">
+                                    <label>Country:</label>
+                                    <select class="select23" name="country_list[${index}][country_name]">
+                                        <option value="">Select Country</option>
+                                        ${countryOptions.join('')}
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label>Label:</label>
+                                    <input type="text" name="country_list[${index}][label]" placeholder="Label">
+                                </div>
+                                <div class="field">
+                                    <label>Banner Label:</label>
+                                    <input type="text" name="country_list[${index}][banner_label]" placeholder="Banner Label">
+                                </div>
+                                <div class="field">
+                                    <label>Class:</label>
+                                    <input type="text" name="country_list[${index}][class]" placeholder="Class">
+                                </div>
+                                <div class="field">
+                                    <label>Score:</label>
+                                    <input type="number" name="country_list[${index}][score]" placeholder="Score">
+                                </div>
+                                <div class="field">
+                                    <label>Currency:</label>
+                                    <select class="select23" name="country_list[${index}][currency]">
+                                        <option value="">Select Currency</option>
+                                        ${currencyOptions.join('')}
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label>Sign-up Fee:</label>
+                                    <input type="number" name="country_list[${index}][sign_up_fee]" placeholder="Sign-up Fee">
+                                </div>
+                                <div class="field">
+                                    <label>Sign-up Fee Label:</label>
+                                    <input type="text" name="country_list[${index}][sign_up_fee_label]" placeholder="Sign-up Fee Label">
+                                </div>
+                                <div class="field">
+                                    <label>Price:</label>
+                                    <input type="number" name="country_list[${index}][price]" placeholder="Price">
+                                </div>
+                                <div class="field">
+                                    <label>Price Label:</label>
+                                    <input type="text" name="country_list[${index}][price_label]" placeholder="Price Label">
+                                </div>
+                            </div>
+                            <button type="button" class="remove-row">Remove</button>
+                        </div>
+                    `);
+                            $('.select23').select2();
+                            index++;
+                        });
+
+                        $(document).on('click', '.remove-row', function () {
+                            $(this).closest('.country-list-row').remove();
+                        });
+                    });
+                })(jQuery);
+            </script>
+
+            <style>
+                .country-list-wrapper {
+                    margin-top: 20px;
+                }
+                .country-list-row {
+                    margin-bottom: 20px;
+                    padding: 15px;
+                    border: 1px solid #ddd;
+                    background-color: #f9f9f9;
+                    border-radius: 5px;
+                }
+                .country-list-row-inner {
+                    display: grid;
+                    grid-template-columns: repeat(3, 1fr);
+                    gap: 15px;
+                }
+                .field {
+                    display: flex;
+                    flex-direction: column;
+                }
+                .field label {
+                    font-weight: bold;
+                    margin-bottom: 5px;
+                }
+                .remove-row {
+                    margin-top: 10px;
+                    color: #fff;
+                    background-color: #d9534f;
+                    border: none;
+                    border-radius: 3px;
+                    padding: 5px 10px;
+                    cursor: pointer;
+                }
+                .remove-row:hover {
+                    background-color: #c9302c;
+                }
+                #add-country-row {
+                    margin-top: 20px;
+                    color: #fff;
+                    background-color: #5bc0de;
+                    border: none;
+                    border-radius: 3px;
+                    padding: 10px 15px;
+                    cursor: pointer;
+                    display: inline-block;
+                }
+                #add-country-row:hover {
+                    background-color: #31b0d5;
+                }
+
+                .select23 {
+                    width: 100%;
+                }
+
+                /* Адаптивність для екранів середнього розміру */
+                @media (max-width: 1524px) {
+                    .country-list-row-inner {
+                        grid-template-columns: repeat(2, 1fr);
+                    }
+                }
+
+                /* Адаптивність для мобільних екранів */
+                @media (max-width: 1300px) {
+                    .country-list-row-inner {
+                        grid-template-columns: 1fr;
+                    }
+                    .field label {
+                        margin-bottom: 3px;
+                    }
+                    .country-list-row {
+                        padding: 10px 5px;
+                    }
+                    .remove-row {
+                        width: 100%;
+                    }
+                    #add-country-row {
+                        width: 100%;
+                        text-align: center;
+                    }
+                }
+            </style>
+            <?php
+        }
+
         public function handle_subscription_item_added($item_id, $item, $order_id) {
             $subscription = wcs_get_subscription($order_id);
 
