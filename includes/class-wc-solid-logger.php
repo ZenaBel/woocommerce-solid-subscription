@@ -21,7 +21,7 @@ class WC_Solid_Subscribe_Logger {
 			$log_entry .= '====End Log ' . $formatted_end_time . ' (' . $elapsed_time . ')====' . "\n\n";
 
 		} else {
-			$log_entry  = "\n" . '====solid Version: ' . WOOCOMMERCE_GATEWAY_SOLID_SUBSCRIBE_VERSION . '====' . "\n";
+			$log_entry  = "\n" . '====Solid Version: ' . WOOCOMMERCE_GATEWAY_SOLID_SUBSCRIBE_VERSION . '====' . "\n";
 			$log_entry .= '====Start Log====' . "\n" . $message . "\n" . '====End Log====' . "\n\n";
 
 		}
