@@ -39,6 +39,7 @@ function solid_gateway_subscribe_init() {
     require_once 'includes/class-wc-solid-webhooks-handler.php';
     require_once 'includes/class-wc-solid-subscribe.php';
     require_once 'includes/class-wc-solid-gateway.php';
+    require_once 'includes/class-wc-solid-model.php';
 
     if (in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_option('active_plugins')))) {
         add_filter('woocommerce_payment_gateways', 'solid_add_subscribe_gateway_class');
@@ -50,6 +51,30 @@ function solid_gateway_subscribe_init() {
     add_action('wp_ajax_nopriv_solid_resume_subscription', [WC_Solid_Gateway_Subscribe::get_instance(), 'resume_subscription']);
     add_action('woocommerce_subscription_status_updated', [WC_Solid_Gateway_Subscribe::get_instance(), 'send_status_change_to_gateway'], 10, 3);
 }
+
+register_activation_hook(__FILE__, function () {
+    if ( ! class_exists( 'WC_Solid_Subscribe_Model' ) ) {
+        require_once plugin_dir_path( __FILE__ ) . 'includes/class-wc-solid-model.php';
+    }
+
+    WC_Solid_Subscribe_Model::create_table();
+});
+
+register_activation_hook(__FILE__, function () {
+    if ( ! class_exists( 'WC_Solid_Product_Model' ) ) {
+        require_once plugin_dir_path( __FILE__ ) . 'includes/class-wc-solid-model.php';
+    }
+
+    WC_Solid_Product_Model::create_table();
+});
+
+register_activation_hook(__FILE__, function () {
+    if ( ! class_exists( 'WC_Solid_Product_List' ) ) {
+        require_once plugin_dir_path( __FILE__ ) . 'includes/class-wc-solid-model.php';
+    }
+
+    WC_Solid_Product_List::create_table();
+});
 
 /**
  * This action hook registers our PHP class as a WooCommerce payment gateway
