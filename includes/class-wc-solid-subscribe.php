@@ -1200,41 +1200,23 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
          */
         public function save_subscription_product_fields($post_id, $post)
         {
-            // Отримуємо дані продукту
             $product = wc_get_product($post_id);
 
-            // Перевіряємо, чи продукт вже синхронізований із Solidgate
-            $solidgate_product_id = get_post_meta($post_id, '_solidgate_product_id', true);
-            if ($solidgate_product_id) {
-                // Додаємо повідомлення адміністратора про відсутність синхронізації при зміні ціни чи періоду
-                $admin_notice = __('This product has already been synchronized with Solidgate. Changes to the price or period will not be synchronized. To apply these changes, create a new product in Solidgate.', 'woocommerce');
-                WC_Solid_Subscribe_Logger::debug($admin_notice);
-                set_transient('solidgate_sync_notice', $admin_notice, 30);
-                return; // Зупиняємо виконання, якщо продукт вже існує
+            if ($this->is_synchronized_with_solidgate($post_id)) {
+                return;
             }
 
-            // Перевіряємо, чи продукт є підпискою
+            // Обробка продукту як підписки
             if (!WC_Subscriptions_Product::is_subscription($product)) {
-                return; // Пропускаємо не підписочні продукти
+                return;
             }
 
             // Отримуємо параметри підписки
-            $subscription_duration = WC_Subscriptions_Product::get_length($product);
             $subscription_period = WC_Subscriptions_Product::get_period($product);
             $subscription_interval = WC_Subscriptions_Product::get_interval($product);
             $free_trial_duration = WC_Subscriptions_Product::get_trial_length($product);
             $free_trial_period = WC_Subscriptions_Product::get_trial_period($product);
             $sign_up_fee = WC_Subscriptions_Product::get_sign_up_fee($product);
-            $price = $product->get_regular_price() ?: $product->get_sale_price();
-
-            WC_Solid_Subscribe_Logger::debug('Subscription product data: ' . print_r([
-                    'duration' => $subscription_duration,
-                    'period' => $subscription_period,
-                    'interval' => $subscription_interval,
-                    'trial_duration' => $free_trial_duration,
-                    'trial_period' => $free_trial_period,
-                    'price' => $price,
-                ], true));
 
             // Формуємо масив даних для Solidgate
             $data = [
@@ -1296,9 +1278,10 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
 
             // Зберігаємо ID Solidgate продукту в мета-даних продукту WooCommerce
             $solidgate_product_id = $solidgate_product['id'];
-            update_post_meta($post_id, '_solidgate_product_id', $solidgate_product_id);
+            WC_Solid_Product_Model::create_product_mapping($post_id, $solidgate_product_id);
             WC_Solid_Subscribe_Logger::debug('New Solidgate product created: ' . print_r($solidgate_product, true));
 
+            $price = $product->get_regular_price() ?: $product->get_sale_price();
             // Формування даних для ціни
             $dataPrice = [
                 'default' => true,
@@ -1308,7 +1291,7 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             ];
 
             if ($free_trial_duration > 0) {
-                $dataPrice['trial_price'] = (int)($price * 100);
+                $dataPrice['trial_price'] = (int)($sign_up_fee * 100);
             }
 
             // Додаємо перевірку перед створенням ціни
@@ -1324,6 +1307,17 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             } else {
                 WC_Solid_Subscribe_Logger::alert('Failed to create price in Solidgate due to missing product ID.');
             }
+        }
+
+        private function is_synchronized_with_solidgate($post_id): bool
+        {
+            $solidgate_product_id = WC_Solid_Product_Model::get_product_mapping_by_product_id($post_id)->uuid;
+            if ($solidgate_product_id) {
+                $admin_notice = __('This product has already been synchronized with Solidgate. Changes to the price or period will not be synchronized. To apply these changes, create a new product in Solidgate.', 'woocommerce');
+                set_transient('solidgate_sync_notice', $admin_notice, 30);
+                return true;
+            }
+            return false;
         }
 
 
@@ -1380,7 +1374,7 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                 if (WC_Subscriptions_Product::is_subscription($product_id)) {
                     // Формуємо дані для запиту до Solidgate
                     $data = array(
-                        'plan_id' => get_post_meta($product_id, '_solidgate_product_id', true),
+                        'plan_id' => WC_Solid_Product_Model::get_product_mapping_by_product_id($product_id)->uuid,
                         'customer' => array(
                             'email' => $order->get_billing_email(),
                             'phone' => $order->get_billing_phone(),
@@ -1432,14 +1426,32 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
 
         public function add_subscription_meta_box()
         {
-            add_meta_box(
-                'subscription_meta_box',              // ID метабокса
-                __('Subscription Details', 'textdomain'), // Назва метабокса
-                [$this, 'display_subscription_meta_box'],      // Функція, яка виводить контент метабокса
-                'shop_subscription',                    // Тип поста, для якого виводиться метабокс
-                'side',                               // Розташування (side для правої колонки)
-                'high'                                // Пріоритет відображення
-            );
+            global $post;
+
+            $subscription = wcs_get_subscription($post->ID);
+
+            if (!($subscription instanceof WC_Subscription)) {
+                return;
+            }
+
+            $subscription_mapping = WC_Solid_Subscribe_Model::get_subscription_mapping_by_subscription_id($subscription->get_id());
+
+            if ($subscription_mapping) {
+                $subscription_id = $subscription_mapping->uuid;
+            } else {
+                return;
+            }
+
+            if ($subscription_id) {
+                add_meta_box(
+                    'subscription_meta_box',              // ID метабокса
+                    __('Subscription Details', 'textdomain'), // Назва метабокса
+                    [$this, 'display_subscription_meta_box'],      // Функція, яка виводить контент метабокса
+                    'shop_subscription',                    // Тип поста, для якого виводиться метабокс
+                    'side',                               // Розташування (side для правої колонки)
+                    'high'                                // Пріоритет відображення
+                );
+            }
         }
 
         public function add_pause_meta_box()
@@ -1531,8 +1543,13 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
 
         public function display_subscription_meta_box($post)
         {
-            // Отримуємо subscription_id з мета-даних замовлення
-            $subscription_id = get_post_meta(wcs_get_subscription($post->ID)->get_parent_id(), '_solid_subscription_id', true);
+            $subscription_mapping = WC_Solid_Subscribe_Model::get_subscription_mapping_by_subscription_id($post->ID);
+
+            if ($subscription_mapping) {
+                $subscription_id = $subscription_mapping->uuid;
+            } else {
+                return;
+            }
 
             WC_Solid_Subscribe_Logger::debug('meta_box Subscription ID: ' . print_r($subscription_id, true));
 
@@ -1613,7 +1630,13 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             $pause_start_point = get_post_meta($post->ID, '_pause_start_point', true);
             $pause_stop_point = get_post_meta($post->ID, '_pause_stop_point', true);
             $existing_pause = get_post_meta($post->ID, '_pause_schedule_exists', true);
-            $subscription_id = get_post_meta(wcs_get_subscription($post->ID)->get_parent_id(), '_solid_subscription_id', true);
+            $subscription_mapping = WC_Solid_Subscribe_Model::get_subscription_mapping_by_subscription_id($post->ID);
+
+            if ($subscription_mapping) {
+                $subscription_id = $subscription_mapping->uuid;
+            } else {
+                return;
+            }
 
             if (!$subscription_id) {
                 echo '<p>' . __('This order is not linked to any subscription.', 'textdomain') . '</p>';
@@ -1651,6 +1674,7 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                 $subscription_id = sanitize_text_field($_POST['subscription_id']);
             } else {
                 wp_send_json_error(['message' => 'Subscription Id is required']);
+                return;
             }
 
             // Отримуємо дані із запиту
@@ -1666,7 +1690,14 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             update_post_meta($subscription_id, '_pause_stop_point', $stop_point);
 
             try {
-                $subscription_uuid = get_post_meta(wcs_get_subscription($subscription_id)->get_parent_id(), '_solid_subscription_id', true);
+                $subscription_mapping = WC_Solid_Subscribe_Model::get_subscription_mapping_by_subscription_id($subscription_id);
+
+                if ($subscription_mapping) {
+                    $subscription_uuid = $subscription_mapping->uuid;
+                } else {
+                    wp_send_json_error(['message' => 'Subscription not found']);
+                    return;
+                }
 
 
                 $body = [
@@ -1734,7 +1765,15 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             }
 
             try {
-                $subscription_uuid = get_post_meta(wcs_get_subscription($subscription_id)->get_parent_id(), '_solid_subscription_id', true);
+                $subscription_mapping = WC_Solid_Subscribe_Model::get_subscription_mapping_by_subscription_id($subscription_id);
+
+                if ($subscription_mapping) {
+                    $subscription_uuid = $subscription_mapping->uuid;
+                } else {
+                    wp_send_json_error(['message' => 'Subscription not found']);
+                    return;
+                }
+
 
                 $response = $this->api->removePauseSchedule($subscription_uuid);
 
@@ -1763,11 +1802,11 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
 
         public function send_status_change_to_gateway($subscription, $new_status, $old_status)
         {
-            $order_id = $subscription->get_parent_id();
+            $subscription_mapping = WC_Solid_Subscribe_Model::get_subscription_mapping_by_subscription_id($subscription->get_id());
 
-            $subscription_id = get_post_meta($order_id, '_solid_subscription_id', true);
-
-            if (!$subscription_id) {
+            if ($subscription_mapping) {
+                $subscription_id = $subscription_mapping->uuid;
+            } else {
                 return;
             }
 
@@ -1797,18 +1836,6 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                     'cancel_code' => '8.06',
                 ];
                 $response = $this->api->cancelSubscription($data);
-            } elseif ($new_status === 'on-hold' && $old_status === 'active') {
-                $data = [
-                    'start_point' => [
-                        'type' => 'immediate',
-                    ],
-                    'stop_point' => [
-                        'type' => 'infinite',
-                    ],
-                ];
-                $response = $this->api->pauseSchedule($subscription_id, $data);
-            } elseif ($new_status === 'active' && $old_status === 'on-hold') {
-                $response = $this->api->removePauseSchedule($subscription_id);
             } elseif ($new_status === 'pending-cancel' && $old_status === 'active') {
                 $data = [
                     'subscription_id' => $subscription_id,
