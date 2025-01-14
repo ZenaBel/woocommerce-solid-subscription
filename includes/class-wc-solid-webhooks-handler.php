@@ -158,26 +158,46 @@ class WC_Solid_Subscribe_Webhook_Handler {
         foreach ($notification->invoices as $invoice) {
             if (isset($invoice->orders)) {
                 foreach ($invoice->orders as $order) {
-                    // 104_1724147277 повернути 104
-                    $order_id = explode('_', $order->id)[0];
-                    break 2;
+                    if (strpos($order->id, '_') !== false) {
+                        $order_id = explode('_', $order->id)[0];
+                        break 2;
+                    }
                 }
             }
         }
 
-        $subscription_id = $notification->subscription->id ?? null;
+        $subscription_uuid = $notification->subscription->id ?? null;
 
-        WC_Solid_Subscribe_Logger::debug( '(init) ID заказа: ' . $order_id );
-        WC_Solid_Subscribe_Logger::debug( '(init) ID подписки: ' . $subscription_id );
-
-        $order = wc_get_order( $order_id );
-
-        if ( ! $order ) {
+        if ( ! $order_id ) {
             WC_Solid_Subscribe_Logger::alert( 'Не удалось найти заказ по ID заказа: ' . $order_id );
             return;
         }
 
-        $order->update_meta_data( '_solid_subscription_id', $subscription_id );
+        if ( ! $subscription_uuid ) {
+            WC_Solid_Subscribe_Logger::alert( 'Не удалось найти подписку по UUID подписки: ' . $subscription_uuid );
+            return;
+        }
+
+        $subscription_id = null;
+
+        $order = wc_get_order( $order_id );
+
+        $subscriptions = wcs_get_subscriptions_for_order($order);
+
+        foreach ($subscriptions as $subscription) {
+            if ($subscription->get_meta('_solid_subscription_id') === $subscription_uuid) {
+                $subscription_id = $subscription->get_id();
+                break;
+            }
+        }
+
+        WC_Solid_Subscribe_Model::create_subscription_mapping($subscription_id, $subscription_uuid);
+
+        WC_Solid_Subscribe_Logger::debug( '(init) ID заказа: ' . $order_id );
+        WC_Solid_Subscribe_Logger::debug( '(init) UUID подписки: ' . $subscription_uuid );
+
+
+        $order->update_meta_data( '_solid_subscription_id', $subscription_uuid );
 
         if ( $notification->subscription->status === 'active' ) {
             $order->update_status( 'processing', __( 'Подписка активирована', 'wc-solid' ) );
@@ -190,31 +210,35 @@ class WC_Solid_Subscribe_Webhook_Handler {
 
     public function process_cancel_subscription( $notification ) {
         WC_Solid_Subscribe_Logger::debug( 'Получено уведомление о подписке: ' . json_encode( $notification ) );
-        $order_id = null;
-        foreach ($notification->invoices as $invoice) {
-            if (isset($invoice->orders)) {
-                foreach ($invoice->orders as $order) {
-                    // 104_1724147277 повернути 104
-                    $order_id = explode('_', $order->id)[0];
-                    break 2;
-                }
-            }
-        }
 
-        $subscription_id = $notification->subscription->id ?? null;
+        $subscription_uuid = $notification->subscription->id ?? null;
 
-        WC_Solid_Subscribe_Logger::debug( '(cancel) ID заказа: ' . $order_id );
-        WC_Solid_Subscribe_Logger::debug( '(cancel) ID подписки: ' . $subscription_id );
+        $subscription_id = $this->get_subscription_id($subscription_uuid);
 
-        $order = wc_get_order( $order_id );
-
-        if ( ! $order ) {
-            WC_Solid_Subscribe_Logger::alert( 'Не удалось найти заказ по ID заказа: ' . $order_id );
+        if ( ! $subscription_id ) {
+            WC_Solid_Subscribe_Logger::alert( 'Не удалось найти подписку по UUID подписки: ' . $subscription_uuid );
             return;
         }
 
-        $order->update_status( 'cancelled', __( 'Подписка отменена', 'wc-solid' ) );
-        WC_Subscriptions_Manager::cancel_subscriptions_for_order( $order );
+        WC_Solid_Subscribe_Logger::debug( '(cancel) ID подписки: ' . $subscription_id );
+        WC_Solid_Subscribe_Logger::debug( '(cancel) UUID подписки: ' . $subscription_uuid );
+
+        $subscription = wcs_get_subscription($subscription_id);
+
+        if ( ! $subscription ) {
+            WC_Solid_Subscribe_Logger::alert( 'Не удалось найти подписку по ID подписки: ' . $subscription_id );
+            return;
+        }
+
+        $order = $subscription->get_parent();
+
+        if ( ! $order ) {
+            WC_Solid_Subscribe_Logger::alert( 'Не удалось найти заказ по ID заказа: ' . $subscription_id );
+            return;
+        }
+
+        $order->update_status( 'cancelled', __( 'Subscription cancelled', 'wc-solid' ) );
+        $subscription->update_status( 'cancelled', __( 'Subscription cancelled', 'wc-solid' ) );
     }
 
     public function process_renew_subscription( $notification ) {
