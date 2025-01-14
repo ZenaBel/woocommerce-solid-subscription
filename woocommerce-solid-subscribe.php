@@ -49,6 +49,8 @@ function solid_gateway_subscribe_init() {
     add_action('wp_ajax_nopriv_solid_pause_subscription', [WC_Solid_Gateway_Subscribe::get_instance(), 'pause_subscription']);
     add_action('wp_ajax_solid_resume_subscription', [WC_Solid_Gateway_Subscribe::get_instance(), 'resume_subscription']);
     add_action('wp_ajax_nopriv_solid_resume_subscription', [WC_Solid_Gateway_Subscribe::get_instance(), 'resume_subscription']);
+    add_action('wp_ajax_solid_restore_subscription', [WC_Solid_Gateway_Subscribe::get_instance(), 'restore_subscription']);
+    add_action('wp_ajax_nopriv_solid_restore_subscription', [WC_Solid_Gateway_Subscribe::get_instance(), 'restore_subscription']);
     add_action('woocommerce_subscription_status_updated', [WC_Solid_Gateway_Subscribe::get_instance(), 'send_status_change_to_gateway'], 10, 3);
 }
 
