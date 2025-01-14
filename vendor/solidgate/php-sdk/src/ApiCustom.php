@@ -66,7 +66,7 @@ class ApiCustom
 
     public function addProduct(array $attributes): string
     {
-        return $this->sendRequestSubscribe('products', $attributes);
+        return $this->sendRequestPOST('products', $attributes);
     }
 
     public function getProducts(array $attributes = []): string
@@ -83,7 +83,7 @@ class ApiCustom
 
     public function addPrice(string $productId, array $attributes): string
     {
-        return $this->sendRequestSubscribe('products/' . $productId . '/prices', $attributes);
+        return $this->sendRequestPOST('products/' . $productId . '/prices', $attributes);
     }
 
     public function getPrices(string $productId, array $attributes = []): string
@@ -100,17 +100,17 @@ class ApiCustom
 
     public function cancelSubscription(array $attributes): string
     {
-        return $this->sendRequestSubscribe('subscription/cancel', $attributes);
+        return $this->sendRequestPOST('subscription/cancel', $attributes);
     }
 
     public function getSubscriptionStatus(array $attributes): string
     {
-        return $this->sendRequestSubscribe('subscription/status', $attributes);
+        return $this->sendRequestPOST('subscription/status', $attributes);
     }
 
     public function pauseSchedule(string $subscription_id, array $attributes): string
     {
-        return $this->sendRequestSubscribe("subscriptions/$subscription_id/pause-schedule", $attributes);
+        return $this->sendRequestPOST("subscriptions/$subscription_id/pause-schedule", $attributes);
     }
 
     public function updatePauseSchedule(string $subscription_id, array $attributes): string
@@ -123,9 +123,34 @@ class ApiCustom
         return $this->sendRequestDELETE("subscriptions/$subscription_id/pause-schedule");
     }
 
+    public function getProduct($product_uuid): string
+    {
+        return $this->sendRequestGET('products/' . $product_uuid, []);
+    }
+
+    public function switchProductSubscription(array $data): string
+    {
+        return $this->sendRequestPOST('subscription/switch-subscription-product', $data);
+    }
+
+    public function createPrice($product_uuid, array $data): string
+    {
+        return $this->sendRequestPOST("products/$product_uuid/prices", $data);
+    }
+
+    public function getProductPrices($uuid): string
+    {
+        return $this->sendRequestGET("products/$uuid/prices", []);
+    }
+
+    public function calculatePrice(array $data): string
+    {
+        return $this->sendRequestPOST('products/calculatePrice', $data);
+    }
+
     public function reactivateSubscription(array $attributes): string
     {
-        return $this->sendRequestSubscribe("subscription/restore", $attributes);
+        return $this->sendRequestPOST("subscription/restore", $attributes);
     }
 
     public function charge(array $attributes): string
@@ -288,7 +313,7 @@ class ApiCustom
         return '';
     }
 
-    public function sendRequestSubscribe(string $method, array $attributes): string
+    public function sendRequestPOST(string $method, array $attributes): string
     {
         $request = $this->makeRequest($method, $attributes);
 
