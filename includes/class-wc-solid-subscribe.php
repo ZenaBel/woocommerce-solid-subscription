@@ -940,7 +940,7 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             echo '</div>'; // закриття status-box
         }
 
-        public function verify_nonce($plugin_id, $nonce_id = '')
+        public function verify_nonce($plugin_id, $nonce_id = ''): bool
         {
             $nonce = (isset($_REQUEST['_wpnonce']) ? sanitize_text_field($_REQUEST['_wpnonce']) : '');
             $nonce = (is_array($nonce) ? $nonce[0] : $nonce);
@@ -952,61 +952,7 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             }
         }
 
-//        public function get_solid_subsribe_order_body($order_id)
-//        {
-//            $order = wc_get_order($order_id);
-//            $uniq_order_id = get_post_meta($order_id, '_uniq_order_id', true);
-//            WC_Solid_Subscribe_Logger::debug('used $uniq_order_id:' . print_r($uniq_order_id, true));
-//
-//            $items_str = '';
-//            $order_description = '';
-//            $subscription_product_id = '';
-//
-//            foreach ($order->get_items() as $item_id => $item) {
-//                // Отримання ID товару
-//                $product_id = $item->get_product_id();
-//
-//                if (WC_Subscriptions_Product::is_subscription($product_id)) {
-//                    $subscription_duration = WC_Subscriptions_Product::get_length($product_id);
-//                    $subscription_period = WC_Subscriptions_Product::get_period($product_id);
-//                    $free_trial_duration = WC_Subscriptions_Product::get_trial_length($product_id);
-//                    $free_trial_period = WC_Subscriptions_Product::get_trial_period($product_id);
-//                    $subscription_product_id = get_post_meta($product_id, '_solidgate_product_id', true);
-//                    WC_Solid_Subscribe_Logger::debug('Subscription product ID: ' . print_r($subscription_product_id, true));
-//
-//                    // Додавання інформації про підписку в опис замовлення
-//                    $order_description .= $item->get_name() . ' (' . $item->get_quantity() . ') - Subscription: ' . $subscription_duration . ' ' . $subscription_period;
-//
-//                    if ($free_trial_duration > 0) {
-//                        $order_description .= ', Free period: ' . $free_trial_duration . ' ' . $free_trial_period . '; ';
-//                    } else {
-//                        $order_description .= '; ';
-//                    }
-//                } else {
-//                    // Додавання звичайного товару в опис замовлення
-//                    $order_description .= $item->get_name() . ' (' . $item->get_quantity() . '); ';
-//                }
-//
-//                $items_str .= $item->get_name() . ', ';
-//            }
-//
-//            return [
-//                'order_id' => $uniq_order_id,
-//                'product_price_id' => $subscription_product_id,
-//                'order_description' => $order_description,
-//                'order_items' => $items_str,
-//                'order_number' => $order_id,
-//                'type' => 'auth',
-//                'settle_interval' => 0,
-//                'customer_account_id' => $order->get_customer_id() . '_' . $order->get_billing_email(),
-//                'customer_email' => $order->get_billing_email(),
-//                'customer_first_name' => $order->get_billing_first_name() ?: ' ',
-//                'customer_last_name' => $order->get_billing_last_name() ?: ' ',
-//                'website' => get_home_url(),
-//            ];
-//        }
-
-        public function get_solid_order_body($order_id)
+        public function get_solid_order_body($order_id): array
         {
             $order = wc_get_order($order_id);
             $uniq_order_id = get_post_meta($order_id, '_uniq_order_id', true);
