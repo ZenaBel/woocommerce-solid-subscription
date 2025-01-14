@@ -83,6 +83,7 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             add_action('woocommerce_api_' . $this->id . '_hook', [$this, 'check_for_webhook']);
             add_action('woocommerce_api_' . $this->id . '_refund', array($this, 'solid_wh_refund_callback'));
             add_action('woocommerce_api_' . $this->id . '_failture', array($this, 'solid_order_failture_callback'));
+            add_action('woocommerce_subscription_cancelled_' . $this->id, [$this, 'cancel_subscription']);
             add_action('woocommerce_process_product_meta', [$this, 'save_subscription_product_fields'], 10, 2);
             add_action('woocommerce_payment_complete', [$this, 'create_subscription'], 10, 1);
             add_action('add_meta_boxes', [$this, 'add_subscription_meta_box']);
@@ -1264,6 +1265,30 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             }
 
             return $response;
+        }
+
+        public function cancel_subscription( $order, $product )
+        {
+            $subscriptions = wcs_get_subscriptions_for_order($order);
+
+            foreach ($subscriptions as $subscription) {
+                $subscription_uuid = WC_Solid_Subscribe_Model::get_subscription_mapping_by_subscription_id($subscription->get_id())->uuid;
+
+                $data = [
+                    'subscription_id' => $subscription_uuid,
+                    'force' => false,
+                    'cancel_code' => '8.06',
+                ];
+
+                $response = $this->api->cancelSubscription($data);
+
+                if (!is_wp_error($response)) {
+                    $body = json_decode($response, true);
+                    if ($body['status'] === 'ok') {
+                        $subscription->update_status('pending-cancel');
+                    }
+                }
+            }
         }
 
 
