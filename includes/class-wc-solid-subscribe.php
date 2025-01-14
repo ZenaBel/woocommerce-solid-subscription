@@ -1050,66 +1050,6 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
 
             return $common_order_data;
         }
-        /*
-         * We're processing the payments here
-         */
-//        public function process_payment($order_id)
-//        {
-//            $order = wc_get_order($order_id);
-//            $order_title = 'Your order';
-//            $uniq_order_id = $order->get_id() . '_' . time();
-//
-//            $order->add_order_note('Payment was started (Order ID: ' . $uniq_order_id . ').');
-//            update_post_meta($order->get_id(), '_uniq_order_id', $uniq_order_id);
-//            update_post_meta($order->get_id(), 'uniq_order_id', $uniq_order_id);
-//
-//            $order_body = $this->get_solid_order_body($order_id);
-//            $order_body['success_url'] = home_url() . '/?wc-api=solid_subscribe_success&order_id=' . $order_id . '&_wpnonce=' . wp_create_nonce('s_checkout_nonce');
-//            $order_body['fail_url'] = home_url() . '/?wc-api=solid_subscribe_failture&order_id=' . $order_id . '&_wpnonce=' . wp_create_nonce('s_checkout_nonce');
-//
-//            $page_customization = [
-//                'public_name' => $this->payment_public_name,
-//                'order_title' => $order_title,
-//                'order_description' => $order_body['order_description']
-//            ];
-//
-//            if (!empty($this->payment_methods)) {
-//                $page_customization['payment_methods'] = $this->payment_methods;
-//            }
-//
-//            $request_body = json_encode(['order' => $order_body, 'page_customization' => $page_customization]);
-//            $signature = $this->api->generateSignature($request_body);
-//
-//            $args = [
-//                'headers' => [
-//                    'merchant' => $this->public_key,
-//                    'Signature' => $signature,
-//                    'Content-Type' => 'application/json'
-//                ],
-//                'body' => $request_body
-//            ];
-//
-//            WC_Solid_Subscribe_Logger::debug('Request body: ' . print_r($request_body, true));
-//
-//            $response = wp_remote_post('https://payment-page.solidgate.com/api/v1/init', $args);
-//
-//            WC_Solid_Subscribe_Logger::debug('Response: ' . print_r($response, true));
-//
-//            if (!is_wp_error($response)) {
-//                $response_body = json_decode($response['body'], true);
-//                if (isset($response_body['url'])) {
-//                    if (isset($response_body['subscription_id'])) {
-//                        $subscription_id = sanitize_text_field($response_body['subscription_id']);
-//                        $order->update_meta_data('_solid_subscription_id', $subscription_id);
-//                    }
-//                    return ['result' => 'success', 'redirect' => $response_body['url']];
-//                } else {
-//                    wc_add_notice('Connection error. [' . $response_body['error']['code'] . ']', 'error');
-//                }
-//            } else {
-//                wc_add_notice('Connection error.', 'error');
-//            }
-//        }
 
         public function process_payment($order_id)
         {
