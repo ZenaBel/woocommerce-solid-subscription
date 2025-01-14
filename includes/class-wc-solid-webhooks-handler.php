@@ -6,7 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class WC_Solid_Subscribe_Webhook_Handler {
     public function __construct() {
-        $this->settings = get_option( 'woocommerce_solid_settings', [] ); // Получение настроек Solid для WooCommerce
+        $this->settings = get_option( 'woocommerce_solid_subscribe_settings', [] ); // Получение настроек Solid для WooCommerce
     }
 
     /**
