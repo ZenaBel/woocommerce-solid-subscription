@@ -155,11 +155,13 @@ class WC_Solid_Subscribe_Webhook_Handler {
     {
         WC_Solid_Subscribe_Logger::debug( 'Получено уведомление о подписке: ' . json_encode( $notification ) );
         $order_id = null;
+        $order_uuid = null;
         foreach ($notification->invoices as $invoice) {
             if (isset($invoice->orders)) {
                 foreach ($invoice->orders as $order) {
                     if (strpos($order->id, '_') !== false) {
                         $order_id = explode('_', $order->id)[0];
+                        $order_uuid = $order->id;
                         break 2;
                     }
                 }
@@ -196,8 +198,23 @@ class WC_Solid_Subscribe_Webhook_Handler {
         WC_Solid_Subscribe_Logger::debug( '(init) ID заказа: ' . $order_id );
         WC_Solid_Subscribe_Logger::debug( '(init) UUID подписки: ' . $subscription_uuid );
 
+        // TOKEN
+        $data = [
+            'order_id' => $order_uuid,
+        ];
 
-        $order->update_meta_data( '_solid_subscription_id', $subscription_uuid );
+        $response = WC_Solid_Gateway_Subscribe::get_instance()->api->checkOrderStatus($data);
+
+        if ( ! is_wp_error( $response ) ) {
+            $body = json_decode( $response, true );
+            $token = new WC_Payment_Token_Solid();
+            $token->set_gateway_id( WC_Solid_Gateway_Subscribe::get_instance()->id );
+            $token->set_token( $body['order']['token'] );
+            $token->set_subscription_id( $body['order']['subscription_id'] );
+            $token->save();
+        }
+
+        WC_Solid_Subscribe_Model::create_subscription_mapping($subscription_id, $subscription_uuid);
 
         if ( $notification->subscription->status === 'active' ) {
             $order->update_status( 'processing', __( 'Подписка активирована', 'wc-solid' ) );
@@ -401,6 +418,7 @@ class WC_Solid_Subscribe_Webhook_Handler {
            case 'subscribe.updated':
                 switch ($notification->callback_type) {
                     case 'init':
+                    case 'create':
                         $this->process_solidgate_subscription( $notification );
                         break;
                     case 'cancel':

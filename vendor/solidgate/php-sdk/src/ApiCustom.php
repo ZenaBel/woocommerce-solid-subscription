@@ -12,6 +12,8 @@ class ApiCustom
 
     const BASE_SOLID_SUBSCRIBE_GATE_API_URI = 'https://subscriptions.solidgate.com/api/v1/';
 
+    const BASE_GATE_API_URI = 'https://gate.solidgate.com/api/v1/';
+
     const RECONCILIATION_AF_ORDER_PATH = 'api/v2/reconciliation/antifraud/order';
     const RECONCILIATION_ORDERS_PATH = 'api/v2/reconciliation/orders';
     const RECONCILIATION_CHARGEBACKS_PATH = 'api/v2/reconciliation/chargebacks';
@@ -59,6 +61,12 @@ class ApiCustom
         $this->solidSubscribeGateApiClient = new HttpClient(
             [
                 'base_uri' => $baseSolidSubscribeGateApiUri,
+                'verify'   => true,
+            ]
+        );
+        $this->gateApiClient = new HttpClient(
+            [
+                'base_uri' => self::BASE_GATE_API_URI,
                 'verify'   => true,
             ]
         );
@@ -151,6 +159,11 @@ class ApiCustom
     public function reactivateSubscription(array $attributes): string
     {
         return $this->sendRequestPOST("subscription/restore", $attributes);
+    }
+
+    public function updateToken(array $data): string
+    {
+        return $this->sendRequestPOST('subscription/update-token', $data);
     }
 
     public function charge(array $attributes): string
@@ -506,5 +519,39 @@ class ApiCustom
         ];
 
         return new Request('DELETE', $path, $headers, $body);
+    }
+
+    protected function makeRequestGATE(string $path, array $attributes): Request
+    {
+        $body = json_encode($attributes);
+
+        $headers = [
+            'Content-Type' => 'application/json',
+            'Accept'       => 'application/json',
+            'Merchant'     => $this->getMerchantId(),
+            'Signature'    => $this->generateSignature($body),
+        ];
+
+        return new Request('POST', $path, $headers, $body);
+    }
+
+    protected function sendRequestGATE(string $string, array $attributes = []): string
+    {
+        $request = $this->makeRequestGATE($string, $attributes);
+
+        try {
+            $response = $this->solidGateApiClient->send($request);
+
+            return $response->getBody()->getContents();
+        } catch (Throwable $e) {
+            $this->exception = $e;
+        }
+
+        return '';
+    }
+
+    public function checkOrderStatus(array $data): string
+    {
+        return $this->sendRequestGATE('status', $data);
     }
 }

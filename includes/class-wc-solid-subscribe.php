@@ -44,6 +44,7 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                 'subscriptions',
                 'subscription_cancellation',
                 'subscription_reactivation',
+                'tokenization',
             );
             $this->hooks = new WC_Solid_Subscribe_Webhook_Handler();
             // Method with all the options fields

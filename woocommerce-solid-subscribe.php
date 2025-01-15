@@ -40,6 +40,7 @@ function solid_gateway_subscribe_init() {
     require_once 'includes/class-wc-solid-subscribe.php';
     require_once 'includes/class-wc-solid-gateway.php';
     require_once 'includes/class-wc-solid-model.php';
+    require_once 'includes/class-wc-solid-payment-token.php';
 
     if (in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_option('active_plugins')))) {
         add_filter('woocommerce_payment_gateways', 'solid_add_subscribe_gateway_class');
