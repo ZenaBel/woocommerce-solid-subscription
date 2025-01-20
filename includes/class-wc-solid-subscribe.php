@@ -946,6 +946,9 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             $nonce = (isset($_REQUEST['_wpnonce']) ? sanitize_text_field($_REQUEST['_wpnonce']) : '');
             $nonce = (is_array($nonce) ? $nonce[0] : $nonce);
             $nonce_id = ($nonce_id == "" ? $plugin_id : $nonce_id);
+            WC_Solid_Subscribe_Logger::debug('Nonce: ' . print_r($nonce, true));
+            WC_Solid_Subscribe_Logger::debug('Nonce ID: ' . print_r($nonce_id, true));
+            WC_Solid_Subscribe_Logger::debug('Nonce check: ' . print_r(wp_verify_nonce($nonce, $nonce_id), true));
             if (!(wp_verify_nonce($nonce, $nonce_id))) {
                 return false;
             } else {
@@ -1139,7 +1142,7 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
         public function solid_order_success_callback()
         {
             if (!$this->verify_nonce($this->id, 's_checkout_nonce')) {
-                die('Access Denied');
+                die();
             }
 
             // Отримуємо замовлення за ID
@@ -1325,7 +1328,7 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
         public function solid_order_failture_callback()
         {
             if (!$this->verify_nonce($this->id, 's_checkout_nonce')) {
-                die('Access Denied');
+                die();
             }
 
             $order = wc_get_order(intval($_GET['order_id']));
