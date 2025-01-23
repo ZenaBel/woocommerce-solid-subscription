@@ -170,6 +170,10 @@ class WC_Solid_Subscribe_Webhook_Handler {
 
         $subscription_uuid = $notification->subscription->id ?? null;
 
+        WC_Solid_Subscribe_Logger::debug( '(init) ID заказа: ' . $order_id );
+        WC_Solid_Subscribe_Logger::debug( '(init) UUID заказа: ' . $order_uuid );
+        WC_Solid_Subscribe_Logger::debug( '(init) UUID подписки: ' . $subscription_uuid );
+
         if ( ! $order_id ) {
             WC_Solid_Subscribe_Logger::alert( 'Не удалось найти заказ по ID заказа: ' . $order_id );
             return;
@@ -180,20 +184,18 @@ class WC_Solid_Subscribe_Webhook_Handler {
             return;
         }
 
-        $subscription_id = null;
-
         $order = wc_get_order( $order_id );
 
         $subscriptions = wcs_get_subscriptions_for_order($order);
 
-        foreach ($subscriptions as $subscription) {
-            if ($subscription->get_meta('_solid_subscription_id') === $subscription_uuid) {
-                $subscription_id = $subscription->get_id();
-                break;
-            }
+        if ( ! $subscriptions ) {
+            WC_Solid_Subscribe_Logger::alert( 'Не удалось найти подписки по ID заказа: ' . $order_id );
+            return;
         }
 
-        WC_Solid_Subscribe_Model::create_subscription_mapping($subscription_id, $subscription_uuid);
+        foreach ($subscriptions as $subscription) {
+            WC_Solid_Subscribe_Model::create_subscription_mapping($subscription->get_id(), $subscription_uuid);
+        }
 
         WC_Solid_Subscribe_Logger::debug( '(init) ID заказа: ' . $order_id );
         WC_Solid_Subscribe_Logger::debug( '(init) UUID подписки: ' . $subscription_uuid );
@@ -213,8 +215,6 @@ class WC_Solid_Subscribe_Webhook_Handler {
             $token->set_subscription_id( $body['order']['subscription_id'] );
             $token->save();
         }
-
-        WC_Solid_Subscribe_Model::create_subscription_mapping($subscription_id, $subscription_uuid);
 
         if ( $notification->subscription->status === 'active' ) {
             $order->update_status( 'processing', __( 'Подписка активирована', 'wc-solid' ) );
@@ -277,6 +277,11 @@ class WC_Solid_Subscribe_Webhook_Handler {
 
         if ( ! $subscription ) {
             WC_Solid_Subscribe_Logger::alert( 'Не удалось найти подписку по ID подписки: ' . $subscription_id );
+            return;
+        }
+
+        if (!in_array($subscription->get_status(), ['cancelled', 'expired'])) {
+            WC_Solid_Subscribe_Logger::alert( 'Подписка не отменена или не истекла: ' . $subscription_id );
             return;
         }
 
@@ -418,7 +423,7 @@ class WC_Solid_Subscribe_Webhook_Handler {
            case 'subscribe.updated':
                 switch ($notification->callback_type) {
                     case 'init':
-                    case 'create':
+                    case 'active':
                         $this->process_solidgate_subscription( $notification );
                         break;
                     case 'cancel':

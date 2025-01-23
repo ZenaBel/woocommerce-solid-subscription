@@ -54,7 +54,7 @@ class WC_Solid_Subscribe_Model
         return false;
     }
 
-    public static function update_subscription_mapping($subscription_id, $new_uuid)
+    public static function update_subscription_mapping_by_subscription_id($subscription_id, $new_uuid)
     {
         global $wpdb;
         $table_name = self::get_subscription_mapping_table_name();
@@ -62,6 +62,17 @@ class WC_Solid_Subscribe_Model
             $table_name,
             ['uuid' => $new_uuid],
             ['subscription_id' => $subscription_id]
+        );
+    }
+
+    public static function update_subscription_mapping_by_uuid($uuid, $new_subscription_id)
+    {
+        global $wpdb;
+        $table_name = self::get_subscription_mapping_table_name();
+        $wpdb->update(
+            $table_name,
+            ['subscription_id' => $new_subscription_id],
+            ['uuid' => $uuid]
         );
     }
 

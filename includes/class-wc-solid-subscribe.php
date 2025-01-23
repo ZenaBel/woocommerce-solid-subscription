@@ -1901,6 +1901,10 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                 wp_send_json_error(['message' => 'Subscription Id is required']);
             }
 
+            if (!in_array(wcs_get_subscription($subscription_id)->get_status(), ['cancelled', 'expired'])) {
+                wp_send_json_error(['message' => 'Subscription is not cancelled or expired']);
+            }
+
             try {
                 $subscription_mapping = WC_Solid_Subscribe_Model::get_subscription_mapping_by_subscription_id($subscription_id);
 
@@ -1924,6 +1928,9 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                     if ($body['status'] === 'ok') {
                         WC_Solid_Subscribe_Logger::debug('Очіукую що помилка тут');
                         $new_subscription_id = $this->renew_subscription($subscription_id, $subscription_uuid);
+                        if (!$new_subscription_id) {
+                            wp_send_json_error(['message' => 'Failed to restore subscription']);
+                        }
                         WC_Solid_Subscribe_Logger::debug('New Subscription ID: ' . print_r($new_subscription_id, true));
                         wp_send_json_success(['message' => 'Subscription restored successfully', 'url' => get_edit_post_link($new_subscription_id)]);
                     } else {
@@ -2004,11 +2011,9 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
 
                     WC_Solid_Subscribe_Logger::debug('New Subscription ID: ' . print_r($new_subscription->get_id(), true));
 
-                    if (WC_Solid_Subscribe_Model::get_subscription_mapping_by_uuid($subscription_uuid)) {
-                        WC_Solid_Subscribe_Model::update_subscription_mapping($subscription_uuid, $new_subscription->get_id());
-                    } else {
-                        WC_Solid_Subscribe_Model::create_subscription_mapping($new_subscription->get_id(), $subscription_uuid);
-                    }
+                    WC_Solid_Subscribe_Logger::debug('Subscription $subscription_uuid, $new_subscription->get_id() ' . print_r($subscription_uuid, true) . ' asdasdsaaasdad ' . print_r($new_subscription->get_id(), true));
+
+                    WC_Solid_Subscribe_Model::update_subscription_mapping_by_uuid($subscription_uuid, $new_subscription->get_id());
 
                     return $new_subscription->get_id();
                 }
@@ -2016,7 +2021,7 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                 WC_Solid_Subscribe_Logger::alert('Renew Subscription Exception: ' . $e->getMessage());
             }
 
-            WC_Solid_Subscribe_Logger::debug('Failed to renew subscription я що тут');
+            WC_Solid_Subscribe_Logger::debug('Failed to renew subscription');
 
             return false;
         }
