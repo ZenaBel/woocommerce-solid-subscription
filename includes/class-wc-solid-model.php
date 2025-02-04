@@ -279,6 +279,15 @@ class WC_Solid_Product_List {
         return $wpdb->get_results($sql);
     }
 
+    public static function get_product_list_by_country_name($product_id, $country_name)
+    {
+        global $wpdb;
+        $table_name = self::get_product_list_table_name();
+        $sql = $wpdb->prepare("SELECT * FROM $table_name WHERE product_id = %s AND country_name = %s", intval($product_id), $country_name);
+        WC_Solid_Subscribe_Logger::debug($sql);
+        return $wpdb->get_row($sql);
+    }
+
     public static function get_product_list_by_uuid($uuid)
     {
         global $wpdb;
