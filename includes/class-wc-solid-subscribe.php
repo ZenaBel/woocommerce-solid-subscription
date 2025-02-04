@@ -134,7 +134,8 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             return self::$instance;
         }
 
-        public function save_product_list($post_id) {
+        public function save_product_list($post_id)
+        {
             // Перевірка nonce
             if (!isset($_POST['country_list_nonce']) || !wp_verify_nonce($_POST['country_list_nonce'], 'save_country_list')) {
                 return;
@@ -326,7 +327,8 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             }
         }
 
-        public function render_country_list_meta_box($post) {
+        public function render_country_list_meta_box($post)
+        {
             // Отримуємо збережені дані
             $country_list = WC_Solid_Product_List::get_product_list_by_product_id($post->ID);
 
@@ -359,19 +361,24 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                             </div>
                             <div class="field">
                                 <label>Label:</label>
-                                <input type="text" name="country_list[<?php echo $index; ?>][label]" value="<?php echo esc_attr($row->label ?? ''); ?>" placeholder="Label">
+                                <input type="text" name="country_list[<?php echo $index; ?>][label]"
+                                       value="<?php echo esc_attr($row->label ?? ''); ?>" placeholder="Label">
                             </div>
                             <div class="field">
                                 <label>Banner Label:</label>
-                                <input type="text" name="country_list[<?php echo $index; ?>][banner_label]" value="<?php echo esc_attr($row->banner_label ?? ''); ?>" placeholder="Banner Label">
+                                <input type="text" name="country_list[<?php echo $index; ?>][banner_label]"
+                                       value="<?php echo esc_attr($row->banner_label ?? ''); ?>"
+                                       placeholder="Banner Label">
                             </div>
                             <div class="field">
                                 <label>Class:</label>
-                                <input type="text" name="country_list[<?php echo $index; ?>][class]" value="<?php echo esc_attr($row->class ?? ''); ?>" placeholder="Class">
+                                <input type="text" name="country_list[<?php echo $index; ?>][class]"
+                                       value="<?php echo esc_attr($row->class ?? ''); ?>" placeholder="Class">
                             </div>
                             <div class="field">
                                 <label>Score:</label>
-                                <input type="number" name="country_list[<?php echo $index; ?>][score]" value="<?php echo esc_attr($row->score ?? ''); ?>" placeholder="Score">
+                                <input type="number" name="country_list[<?php echo $index; ?>][score]"
+                                       value="<?php echo esc_attr($row->score ?? ''); ?>" placeholder="Score">
                             </div>
                             <div class="field">
                                 <label>Currency:</label>
@@ -386,19 +393,26 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                             </div>
                             <div class="field">
                                 <label>Sign-up Fee:</label>
-                                <input type="number" name="country_list[<?php echo $index; ?>][sign_up_fee]" value="<?php echo esc_attr($row->sign_up_fee ?? ''); ?>" placeholder="Sign-up Fee">
+                                <input type="number" name="country_list[<?php echo $index; ?>][sign_up_fee]"
+                                       value="<?php echo esc_attr($row->sign_up_fee ?? ''); ?>"
+                                       placeholder="Sign-up Fee">
                             </div>
                             <div class="field">
                                 <label>Sign-up Fee Label:</label>
-                                <input type="text" name="country_list[<?php echo $index; ?>][sign_up_fee_label]" value="<?php echo esc_attr($row->sign_up_fee_label ?? ''); ?>" placeholder="Sign-up Fee Label">
+                                <input type="text" name="country_list[<?php echo $index; ?>][sign_up_fee_label]"
+                                       value="<?php echo esc_attr($row->sign_up_fee_label ?? ''); ?>"
+                                       placeholder="Sign-up Fee Label">
                             </div>
                             <div class="field">
                                 <label>Price:</label>
-                                <input type="number" name="country_list[<?php echo $index; ?>][price]" value="<?php echo esc_attr($row->price ?? ''); ?>" placeholder="Price">
+                                <input type="number" name="country_list[<?php echo $index; ?>][price]"
+                                       value="<?php echo esc_attr($row->price ?? ''); ?>" placeholder="Price">
                             </div>
                             <div class="field">
                                 <label>Price Label:</label>
-                                <input type="text" name="country_list[<?php echo $index; ?>][price_label]" value="<?php echo esc_attr($row->price_label ?? ''); ?>" placeholder="Price Label">
+                                <input type="text" name="country_list[<?php echo $index; ?>][price_label]"
+                                       value="<?php echo esc_attr($row->price_label ?? ''); ?>"
+                                       placeholder="Price Label">
                             </div>
                         </div>
                         <button type="button" class="remove-row">Remove</button>
@@ -491,6 +505,7 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                 .country-list-wrapper {
                     margin-top: 20px;
                 }
+
                 .country-list-row {
                     margin-bottom: 20px;
                     padding: 15px;
@@ -498,19 +513,23 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                     background-color: #f9f9f9;
                     border-radius: 5px;
                 }
+
                 .country-list-row-inner {
                     display: grid;
                     grid-template-columns: repeat(3, 1fr);
                     gap: 15px;
                 }
+
                 .field {
                     display: flex;
                     flex-direction: column;
                 }
+
                 .field label {
                     font-weight: bold;
                     margin-bottom: 5px;
                 }
+
                 .remove-row {
                     margin-top: 10px;
                     color: #fff;
@@ -520,9 +539,11 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                     padding: 5px 10px;
                     cursor: pointer;
                 }
+
                 .remove-row:hover {
                     background-color: #c9302c;
                 }
+
                 #add-country-row {
                     margin-top: 20px;
                     color: #fff;
@@ -533,6 +554,7 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                     cursor: pointer;
                     display: inline-block;
                 }
+
                 #add-country-row:hover {
                     background-color: #31b0d5;
                 }
@@ -553,15 +575,19 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                     .country-list-row-inner {
                         grid-template-columns: 1fr;
                     }
+
                     .field label {
                         margin-bottom: 3px;
                     }
+
                     .country-list-row {
                         padding: 10px 5px;
                     }
+
                     .remove-row {
                         width: 100%;
                     }
+
                     #add-country-row {
                         width: 100%;
                         text-align: center;
@@ -571,7 +597,8 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             <?php
         }
 
-        public function handle_subscription_item_added($item_id, $item, $order_id) {
+        public function handle_subscription_item_added($item_id, $item, $order_id)
+        {
             $subscription = wcs_get_subscription($order_id);
 
             if (!$subscription) {
@@ -2095,7 +2122,7 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             return $response;
         }
 
-        public function cancel_subscription( $order, $product )
+        public function cancel_subscription($order, $product)
         {
             $subscriptions = wcs_get_subscriptions_for_order($order);
 
