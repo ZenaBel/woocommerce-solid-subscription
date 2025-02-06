@@ -1035,10 +1035,15 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                     WC_Solid_Subscribe_Logger::debug('Country: ' . print_r($country, true));
 
                     if ($country) {
-//                        WC_Solid_Subscribe_Logger::debug('($product_id, $country)', print_r([WC_Solid_Product_List::get_product_list_by_country_name($product_id, $country)], true));
-                        WC_Solid_Subscribe_Logger::debug('$country', print_r(WC_Solid_Product_List::get_product_list_by_country_name($product_id, $country)->uuid, true));
-                        $price_id = WC_Solid_Product_List::get_product_list_by_country_name($product_id, $country)->uuid;
-                        WC_Solid_Subscribe_Logger::debug('Price ID: ' . print_r($price_id, true));
+                        $price_mapping = WC_Solid_Product_List::get_product_list_by_country_name($product_id, $country);
+
+                        if ($price_mapping) {
+                            $price_id = $price_mapping->uuid;
+                            WC_Solid_Subscribe_Logger::debug('Price ID: ' . print_r($price_id, true));
+                        } else {
+                            $price_id = $subscription_product_id;
+                            WC_Solid_Subscribe_Logger::debug('Default Price ID: ' . print_r($price_id, true));
+                        }
                     } else {
                         $price_id = $subscription_product_id;
                     }
