@@ -209,11 +209,22 @@ class WC_Solid_Subscribe_Webhook_Handler {
 
         if ( ! is_wp_error( $response ) ) {
             $body = json_decode( $response, true );
-            $token = new WC_Payment_Token_Solid();
-            $token->set_gateway_id( WC_Solid_Gateway_Subscribe::get_instance()->id );
-            $token->set_token( $body['order']['token'] );
-            $token->set_subscription_id( $body['order']['subscription_id'] );
-            $token->save();
+
+            // Перевіряємо наявність токена перед створенням
+            if (!empty($body['order']['token'])) {
+                $token = new WC_Payment_Token_Solid();
+                $token->set_gateway_id( WC_Solid_Gateway_Subscribe::get_instance()->id );
+                $token->set_token( $body['order']['token'] );
+                if (isset($body['order']['subscription_id'])) {
+                    $token->set_subscription_id( $body['order']['subscription_id'] );
+                }
+                $token->save();
+                WC_Solid_Subscribe_Logger::debug('Токен успішно збережено');
+            } else {
+                WC_Solid_Subscribe_Logger::alert('Токен не знайдено у відповіді API');
+            }
+        } else {
+            WC_Solid_Subscribe_Logger::alert('Помилка при отриманні статусу замовлення: ' . $response);
         }
 
         if ( $notification->subscription->status === 'active' ) {

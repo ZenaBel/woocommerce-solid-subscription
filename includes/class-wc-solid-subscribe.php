@@ -748,7 +748,7 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
          */
         public function wc_solid_enqueue_scripts()
         {
-            wp_register_style('solid-custom-style', plugins_url('/woocommerce-solid-subscription/assets/css/style.css'), array(), WC()->version);
+            wp_register_style('solid-custom-style', plugin_dir_url(__FILE__) . 'assets/css/style.css', array(), WC()->version);
             wp_enqueue_style('solid-custom-style');
             wp_enqueue_style('jquery-modal-style', 'https://cdnjs.cloudflare.com/ajax/libs/jquery-modal/0.9.1/jquery.modal.min.css');
             wp_enqueue_script('jquery');
@@ -769,7 +769,7 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
 
             wp_enqueue_script(
                 'solid-woocommerce-subscription',
-                plugins_url('/woocommerce-solid-subscription/assets/js/solid.js'),
+                plugin_dir_url(__FILE__) . '/assets/js/solid.js',
                 array(
                     'jquery',
                 ),
