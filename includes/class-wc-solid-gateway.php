@@ -53,7 +53,7 @@ if ( ! class_exists( 'WC_Solid_Gateway' ) ) {
 
             $this->api = new Api($this->public_key, $this->private_key);
             if ('form' == $this->integration_type) {
-                $this->init_scripts();
+                // $this->init_scripts();
             }
 
             // This action hook saves the settings
@@ -76,34 +76,31 @@ if ( ! class_exists( 'WC_Solid_Gateway' ) ) {
          * Add script to load card form
          */
         public function wc_solid_enqueue_scripts() {
-            wp_register_style( 'solid-custom-style', plugins_url( '/woocommerce-solid-gateway/assets/css/style.css' ), array(), WC()->version );
+            wp_register_style( 'solid-custom-style', WC_SOLID_PLUGIN_URL . 'assets/css/style.css', array(), WOOCOMMERCE_GATEWAY_SOLID_SUBSCRIBE_VERSION );
             wp_enqueue_style( 'solid-custom-style' );
             wp_enqueue_style( 'jquery-modal-style', 'https://cdnjs.cloudflare.com/ajax/libs/jquery-modal/0.9.1/jquery.modal.min.css');
             wp_enqueue_script( 'jquery' );
             wp_enqueue_script(
                 'solid-form-script',
                 'https://cdn.solidgate.com/js/solid-form.js',
-                [],
-                WC()->version
+                array(),
+                null,
+                true
             );
             wp_enqueue_script(
                 'jquery-modal',
                 'https://cdnjs.cloudflare.com/ajax/libs/jquery-modal/0.9.1/jquery.modal.min.js',
-                array(
-                    'jquery',
-                ),
-                WC()->version
+                array('jquery'),
+                '0.9.1',
+                true
             );
-
             wp_enqueue_script(
                 'solid-woocommerce',
-                plugins_url( '/woocommerce-solid-gateway/assets/js/solid.js'),
-                array(
-                    'jquery',
-                ),
-                WC()->version
+                WC_SOLID_PLUGIN_URL . 'assets/js/solid.js',
+                array('jquery', 'solid-form-script'),
+                WOOCOMMERCE_GATEWAY_SOLID_SUBSCRIBE_VERSION,
+                true
             );
-
         }
         function validate_signature(string $jsonString): string {
             return base64_encode (

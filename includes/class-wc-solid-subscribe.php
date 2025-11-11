@@ -26,6 +26,17 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
     class WC_Solid_Gateway_Subscribe extends WC_Payment_Gateway
     {
         private static $instance = null;
+        protected $hooks;
+        protected $google_pay_merchant_id;
+        protected $logging;
+        protected $payment_public_name;
+        protected $payment_methods;
+        protected $private_key;
+        protected $integration_type;
+        protected $public_key;
+        protected $webhook_private_key;
+        protected $webhook_public_key;
+        protected $api;
 
         /**
          * Class constructor, more about it in Step 3
@@ -96,17 +107,17 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                 $nonce = wp_create_nonce('pause_subscription_nonce');
 
                 wp_enqueue_script(
-                    'admin-subscription-js',
-                    dirname(plugin_dir_url(__FILE__)) . '/assets/js/admin-subscription.js',
-                    ['jquery'],
-                    '1.0.0',
-                    true
+                        'admin-subscription-js',
+                        dirname(plugin_dir_url(__FILE__)) . '/assets/js/admin-subscription.js',
+                        ['jquery'],
+                        '1.0.0',
+                        true
                 );
                 // Передаємо глобальні змінні в JavaScript
                 wp_localize_script('admin-subscription-js', 'pauseSubscriptionData', [
-                    'ajaxurl' => admin_url('admin-ajax.php'),
-                    'nonce' => $nonce,
-                    'subscription_id' => $_GET['post'] ?? 0,
+                        'ajaxurl' => admin_url('admin-ajax.php'),
+                        'nonce' => $nonce,
+                        'subscription_id' => $_GET['post'] ?? 0,
                 ]);
             });
             add_action('woocommerce_new_order_item', [$this, 'handle_subscription_item_added'], 10, 3);
@@ -114,16 +125,29 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
 
             add_action('add_meta_boxes', function () {
                 add_meta_box(
-                    'custom_repeater', // ID метабоксу
-                    'Country List', // Заголовок
-                    [$this, 'render_country_list_meta_box'], // Функція рендеру
-                    'product', // Пост-тип
-                    'normal', // Розташування
-                    'default' // Пріоритет
+                        'custom_repeater', // ID метабоксу
+                        'Country List', // Заголовок
+                        [$this, 'render_country_list_meta_box'], // Функція рендеру
+                        'product', // Пост-тип
+                        'normal', // Розташування
+                        'default' // Пріоритет
                 );
             });
 
             add_action('save_post', [$this, 'save_product_list']);
+        }
+
+        public function is_available()
+        {
+            $is_available = ('yes' === $this->enabled);
+
+            if ($is_available) {
+                if (empty($this->public_key) || empty($this->private_key)) {
+                    return false;
+                }
+            }
+
+            return $is_available;
         }
 
         public static function get_instance(): ?WC_Solid_Gateway_Subscribe
@@ -200,10 +224,10 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                         // Оновлення, якщо дані змінилися
                         if ($item->price != $product['price'] || $item->sign_up_fee != $product['sign_up_fee']) {
                             $body = [
-                                'status' => 'active',
-                                'product_price' => (int)($product['price'] * 100),
-                                'currency' => sanitize_text_field($product['currency']),
-                                'country' => sanitize_text_field($product['country_name']),
+                                    'status' => 'active',
+                                    'product_price' => (int)($product['price'] * 100),
+                                    'currency' => sanitize_text_field($product['currency']),
+                                    'country' => sanitize_text_field($product['country_name']),
                             ];
 
                             if ($product['sign_up_fee']) {
@@ -219,19 +243,19 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                                 $price_uuid = json_decode($response, true)['id'];
 
                                 $data = [
-                                    'product_id' => $post_id,
-                                    'uuid' => $price_uuid,
-                                    'price_id' => $price_uuid ?? '',
-                                    'country' => $product['country_name'],
-                                    'label' => $product['label'] ?? '',
-                                    'banner_label' => $product['banner_label'] ?? '',
-                                    'class' => $product['class'] ?? '',
-                                    'score' => $product['score'] ?? '',
-                                    'currency' => $product['currency'],
-                                    'sign_up_fee' => $product['sign_up_fee'] ?? '',
-                                    'sign_up_fee_label' => $product['sign_up_fee_label'] ?? '',
-                                    'price' => $product['price'],
-                                    'price_label' => $product['price_label'] ?? '',
+                                        'product_id' => $post_id,
+                                        'uuid' => $price_uuid,
+                                        'price_id' => $price_uuid ?? '',
+                                        'country' => $product['country_name'],
+                                        'label' => $product['label'] ?? '',
+                                        'banner_label' => $product['banner_label'] ?? '',
+                                        'class' => $product['class'] ?? '',
+                                        'score' => $product['score'] ?? '',
+                                        'currency' => $product['currency'],
+                                        'sign_up_fee' => $product['sign_up_fee'] ?? '',
+                                        'sign_up_fee_label' => $product['sign_up_fee_label'] ?? '',
+                                        'price' => $product['price'],
+                                        'price_label' => $product['price_label'] ?? '',
                                 ];
 
                                 WC_Solid_Subscribe_Logger::debug('Update product list: ' . print_r($data, true));
@@ -241,18 +265,18 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                         }
 
                         $data = [
-                            'product_id' => $post_id,
-                            'uuid' => $item->uuid,
-                            'country_name' => sanitize_text_field($product['country_name']),
-                            'label' => sanitize_text_field($product['label']) ?? '',
-                            'banner_label' => sanitize_text_field($product['banner_label']) ?? '',
-                            'class' => sanitize_text_field($product['class']) ?? '',
-                            'score' => sanitize_text_field($product['score']) ?? '',
-                            'currency' => sanitize_text_field($product['currency']),
-                            'sign_up_fee' => sanitize_text_field($product['sign_up_fee']) ?? null,
-                            'sign_up_fee_label' => sanitize_text_field($product['sign_up_fee_label']) ?? '',
-                            'price' => sanitize_text_field($product['price']),
-                            'price_label' => sanitize_text_field($product['price_label']) ?? '',
+                                'product_id' => $post_id,
+                                'uuid' => $item->uuid,
+                                'country_name' => sanitize_text_field($product['country_name']),
+                                'label' => sanitize_text_field($product['label']) ?? '',
+                                'banner_label' => sanitize_text_field($product['banner_label']) ?? '',
+                                'class' => sanitize_text_field($product['class']) ?? '',
+                                'score' => sanitize_text_field($product['score']) ?? '',
+                                'currency' => sanitize_text_field($product['currency']),
+                                'sign_up_fee' => sanitize_text_field($product['sign_up_fee']) ?? null,
+                                'sign_up_fee_label' => sanitize_text_field($product['sign_up_fee_label']) ?? '',
+                                'price' => sanitize_text_field($product['price']),
+                                'price_label' => sanitize_text_field($product['price_label']) ?? '',
                         ];
 
                         WC_Solid_Subscribe_Logger::debug('Update product list (no price): ' . print_r($data, true));
@@ -263,11 +287,11 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                     } else {
                         // Додавання нового елемента
                         $body = [
-                            'default' => false,
-                            'status' => 'active',
-                            'product_price' => (int)($product['price'] * 100),
-                            'currency' => sanitize_text_field($product['currency']),
-                            'country' => sanitize_text_field($product['country_name']),
+                                'default' => false,
+                                'status' => 'active',
+                                'product_price' => (int)($product['price'] * 100),
+                                'currency' => sanitize_text_field($product['currency']),
+                                'country' => sanitize_text_field($product['country_name']),
                         ];
 
                         if ($product['sign_up_fee']) {
@@ -282,18 +306,18 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                             $price_uuid = json_decode($response, true)['id'];
 
                             $data = [
-                                'product_id' => $post_id,
-                                'uuid' => $price_uuid,
-                                'country_name' => sanitize_text_field($product['country_name']),
-                                'label' => sanitize_text_field($product['label']) ?? '',
-                                'banner_label' => sanitize_text_field($product['banner_label']) ?? '',
-                                'class' => sanitize_text_field($product['class']) ?? '',
-                                'score' => sanitize_text_field($product['score']) ?? '',
-                                'currency' => sanitize_text_field($product['currency']),
-                                'sign_up_fee' => sanitize_text_field($product['sign_up_fee']) ?? null,
-                                'sign_up_fee_label' => sanitize_text_field($product['sign_up_fee_label']) ?? '',
-                                'price' => sanitize_text_field($product['price']),
-                                'price_label' => sanitize_text_field($product['price_label']) ?? '',
+                                    'product_id' => $post_id,
+                                    'uuid' => $price_uuid,
+                                    'country_name' => sanitize_text_field($product['country_name']),
+                                    'label' => sanitize_text_field($product['label']) ?? '',
+                                    'banner_label' => sanitize_text_field($product['banner_label']) ?? '',
+                                    'class' => sanitize_text_field($product['class']) ?? '',
+                                    'score' => sanitize_text_field($product['score']) ?? '',
+                                    'currency' => sanitize_text_field($product['currency']),
+                                    'sign_up_fee' => sanitize_text_field($product['sign_up_fee']) ?? null,
+                                    'sign_up_fee_label' => sanitize_text_field($product['sign_up_fee_label']) ?? '',
+                                    'price' => sanitize_text_field($product['price']),
+                                    'price_label' => sanitize_text_field($product['price_label']) ?? '',
                             ];
 
                             WC_Solid_Subscribe_Logger::debug('Create product list: ' . print_r($data, true));
@@ -502,97 +526,97 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             </script>
 
             <style>
-                .country-list-wrapper {
-                    margin-top: 20px;
-                }
+              .country-list-wrapper {
+                margin-top: 20px;
+              }
 
-                .country-list-row {
-                    margin-bottom: 20px;
-                    padding: 15px;
-                    border: 1px solid #ddd;
-                    background-color: #f9f9f9;
-                    border-radius: 5px;
-                }
+              .country-list-row {
+                margin-bottom: 20px;
+                padding: 15px;
+                border: 1px solid #ddd;
+                background-color: #f9f9f9;
+                border-radius: 5px;
+              }
 
+              .country-list-row-inner {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 15px;
+              }
+
+              .field {
+                display: flex;
+                flex-direction: column;
+              }
+
+              .field label {
+                font-weight: bold;
+                margin-bottom: 5px;
+              }
+
+              .remove-row {
+                margin-top: 10px;
+                color: #fff;
+                background-color: #d9534f;
+                border: none;
+                border-radius: 3px;
+                padding: 5px 10px;
+                cursor: pointer;
+              }
+
+              .remove-row:hover {
+                background-color: #c9302c;
+              }
+
+              #add-country-row {
+                margin-top: 20px;
+                color: #fff;
+                background-color: #5bc0de;
+                border: none;
+                border-radius: 3px;
+                padding: 10px 15px;
+                cursor: pointer;
+                display: inline-block;
+              }
+
+              #add-country-row:hover {
+                background-color: #31b0d5;
+              }
+
+              .select23 {
+                width: 100%;
+              }
+
+              /* Адаптивність для екранів середнього розміру */
+              @media (max-width: 1524px) {
                 .country-list-row-inner {
-                    display: grid;
-                    grid-template-columns: repeat(3, 1fr);
-                    gap: 15px;
+                  grid-template-columns: repeat(2, 1fr);
                 }
+              }
 
-                .field {
-                    display: flex;
-                    flex-direction: column;
+              /* Адаптивність для мобільних екранів */
+              @media (max-width: 1300px) {
+                .country-list-row-inner {
+                  grid-template-columns: 1fr;
                 }
 
                 .field label {
-                    font-weight: bold;
-                    margin-bottom: 5px;
+                  margin-bottom: 3px;
+                }
+
+                .country-list-row {
+                  padding: 10px 5px;
                 }
 
                 .remove-row {
-                    margin-top: 10px;
-                    color: #fff;
-                    background-color: #d9534f;
-                    border: none;
-                    border-radius: 3px;
-                    padding: 5px 10px;
-                    cursor: pointer;
-                }
-
-                .remove-row:hover {
-                    background-color: #c9302c;
+                  width: 100%;
                 }
 
                 #add-country-row {
-                    margin-top: 20px;
-                    color: #fff;
-                    background-color: #5bc0de;
-                    border: none;
-                    border-radius: 3px;
-                    padding: 10px 15px;
-                    cursor: pointer;
-                    display: inline-block;
+                  width: 100%;
+                  text-align: center;
                 }
-
-                #add-country-row:hover {
-                    background-color: #31b0d5;
-                }
-
-                .select23 {
-                    width: 100%;
-                }
-
-                /* Адаптивність для екранів середнього розміру */
-                @media (max-width: 1524px) {
-                    .country-list-row-inner {
-                        grid-template-columns: repeat(2, 1fr);
-                    }
-                }
-
-                /* Адаптивність для мобільних екранів */
-                @media (max-width: 1300px) {
-                    .country-list-row-inner {
-                        grid-template-columns: 1fr;
-                    }
-
-                    .field label {
-                        margin-bottom: 3px;
-                    }
-
-                    .country-list-row {
-                        padding: 10px 5px;
-                    }
-
-                    .remove-row {
-                        width: 100%;
-                    }
-
-                    #add-country-row {
-                        width: 100%;
-                        text-align: center;
-                    }
-                }
+              }
             </style>
             <?php
         }
@@ -640,10 +664,10 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
 
             if ($is_switch_product) {
                 $subscription->add_order_note(
-                    sprintf(
-                        __('Subscription product was switched to %s', 'wc-solid'),
-                        get_the_title($product_id)
-                    )
+                        sprintf(
+                                __('Subscription product was switched to %s', 'wc-solid'),
+                                get_the_title($product_id)
+                        )
                 );
             }
 
@@ -656,8 +680,8 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
         {
             global $wpdb;
             $order_id = $wpdb->get_var($wpdb->prepare(
-                "SELECT order_id FROM {$wpdb->prefix}woocommerce_order_items WHERE order_item_id = %d",
-                $item_id
+                    "SELECT order_id FROM {$wpdb->prefix}woocommerce_order_items WHERE order_item_id = %d",
+                    $item_id
             ));
             WC_Solid_Subscribe_Logger::debug("Order ID: $order_id");
 
@@ -697,10 +721,10 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
 
             if ($is_switch_product) {
                 $subscription->add_order_note(
-                    sprintf(
-                        __('Subscription product was switched to %s', 'wc-solid'),
-                        get_the_title($product_id)
-                    )
+                        sprintf(
+                                __('Subscription product was switched to %s', 'wc-solid'),
+                                get_the_title($product_id)
+                        )
                 );
             }
 
@@ -710,8 +734,8 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
         public function switch_product_subscription($new_product_uuid, $subscription_uuid): bool
         {
             $data = [
-                'subscription_id' => $subscription_uuid,
-                'new_product_id' => $new_product_uuid,
+                    'subscription_id' => $subscription_uuid,
+                    'new_product_id' => $new_product_uuid,
             ];
 
             $response = $this->api->switchProductSubscription($data);
@@ -748,32 +772,33 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
          */
         public function wc_solid_enqueue_scripts()
         {
-            wp_register_style('solid-custom-style', plugin_dir_url(__FILE__) . 'assets/css/style.css', array(), WC()->version);
+            wp_register_style('solid-custom-style', WC_SOLID_PLUGIN_URL . 'assets/css/style.css', array(), WOOCOMMERCE_GATEWAY_SOLID_SUBSCRIBE_VERSION);
             wp_enqueue_style('solid-custom-style');
             wp_enqueue_style('jquery-modal-style', 'https://cdnjs.cloudflare.com/ajax/libs/jquery-modal/0.9.1/jquery.modal.min.css');
             wp_enqueue_script('jquery');
             wp_enqueue_script(
-                'solid-form-script',
-                'https://cdn.solidgate.com/js/solid-form.js',
-                [],
-                WC()->version
+                    'solid-form-script',
+                    'https://cdn.solidgate.com/js/solid-form.js',
+                    array(),
+                    null,
+                    true
             );
             wp_enqueue_script(
-                'jquery-modal',
-                'https://cdnjs.cloudflare.com/ajax/libs/jquery-modal/0.9.1/jquery.modal.min.js',
-                array(
-                    'jquery',
-                ),
-                WC()->version
+                    'jquery-modal',
+                    'https://cdnjs.cloudflare.com/ajax/libs/jquery-modal/0.9.1/jquery.modal.min.js',
+                    array('jquery'),
+                    '0.9.1',
+                    true
             );
 
             wp_enqueue_script(
-                'solid-woocommerce-subscription',
-                plugin_dir_url(__FILE__) . '/assets/js/solid.js',
-                array(
-                    'jquery',
-                ),
-                WC()->version
+                    'solid-woocommerce-subscription',
+                    WC_SOLID_PLUGIN_URL . '/assets/js/solid.js',
+                    array(
+                            'jquery',
+                    ),
+                    WOOCOMMERCE_GATEWAY_SOLID_SUBSCRIBE_VERSION,
+                    true
             );
 
 
@@ -782,9 +807,9 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
         function validate_signature(string $jsonString): string
         {
             return base64_encode(
-                hash_hmac('sha512',
-                    $this->webhook_public_key . $jsonString . $this->webhook_public_key,
-                    $this->webhook_private_key)
+                    hash_hmac('sha512',
+                            $this->webhook_public_key . $jsonString . $this->webhook_public_key,
+                            $this->webhook_private_key)
             );
         }
 
@@ -794,87 +819,87 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
         public function init_form_fields()
         {
             $this->form_fields = array(
-                'enabled' => array(
-                    'title' => 'Enable/Disable',
-                    'label' => 'Enable Solid Gateway',
-                    'type' => 'checkbox',
-                    'description' => '',
-                    'default' => 'no'
-                ),
-                'logging' => array(
-                    'title' => 'Logging',
-                    'label' => 'Enable Logging',
-                    'type' => 'checkbox',
-                    'description' => '',
-                    'default' => 'no'
-                ),
-                'integration_type' => array(
-                    'title' => 'Integration type',
-                    'type' => 'select',
-                    'default' => 'page',
-                    'options' => array('form' => 'Integrated form', 'page' => 'Payment page')
-                ),
-                'title' => array(
-                    'title' => 'Title',
-                    'type' => 'text',
-                    'description' => 'This controls the title which the user sees during checkout.',
-                    'default' => 'Visa/Mastercard',
-                    'desc_tip' => true,
-                ),
-                'payment_methods' => array(
-                    'title' => 'Custom payment methods',
-                    'type' => 'multiselect',
-                    'class' => 'wc-enhanced-select',
-                    'css' => 'width: 400px;',
-                    'default' => '',
-                    'options' => array('paypal' => 'PayPal'),
-                    'desc_tip' => true,
-                    'custom_attributes' => array(
-                        'data-placeholder' => __('Select payment methods', 'woocommerce'),
+                    'enabled' => array(
+                            'title' => 'Enable/Disable',
+                            'label' => 'Enable Solid Gateway',
+                            'type' => 'checkbox',
+                            'description' => '',
+                            'default' => 'no'
+                    ),
+                    'logging' => array(
+                            'title' => 'Logging',
+                            'label' => 'Enable Logging',
+                            'type' => 'checkbox',
+                            'description' => '',
+                            'default' => 'no'
+                    ),
+                    'integration_type' => array(
+                            'title' => 'Integration type',
+                            'type' => 'select',
+                            'default' => 'page',
+                            'options' => array('form' => 'Integrated form', 'page' => 'Payment page')
+                    ),
+                    'title' => array(
+                            'title' => 'Title',
+                            'type' => 'text',
+                            'description' => 'This controls the title which the user sees during checkout.',
+                            'default' => 'Visa/Mastercard',
+                            'desc_tip' => true,
+                    ),
+                    'payment_methods' => array(
+                            'title' => 'Custom payment methods',
+                            'type' => 'multiselect',
+                            'class' => 'wc-enhanced-select',
+                            'css' => 'width: 400px;',
+                            'default' => '',
+                            'options' => array('paypal' => 'PayPal'),
+                            'desc_tip' => true,
+                            'custom_attributes' => array(
+                                    'data-placeholder' => __('Select payment methods', 'woocommerce'),
+                            )
+                    ),
+                    "google_pay_merchant_id" => array(
+                            'title' => 'Google Pay merchant ID',
+                            'type' => 'text',
+                            'description' => 'Type here your google_pay_merchant_id to enable google pay button',
+                            'desc_tip' => true,
+                    ),
+                    'payment_public_name' => array(
+                            'title' => 'Merchant',
+                            'type' => 'text',
+                            'default' => 'Merchant',
+                    ),
+                    'description' => array(
+                            'title' => 'Description',
+                            'type' => 'textarea',
+                            'description' => 'This controls the description which the user sees during checkout.',
+                            'default' => 'Visa/Mastercard.',
+                    ),
+                    'public_key' => array(
+                            'title' => 'Public Key',
+                            'type' => 'text'
+                    ),
+                    'private_key' => array(
+                            'title' => 'Private Key',
+                            'type' => 'password'
+                    ),
+                    'webhook_public_key' => array(
+                            'title' => 'Webhook Public Key',
+                            'type' => 'text'
+                    ),
+                    'webhook_private_key' => array(
+                            'title' => 'Webhook Private Key',
+                            'type' => 'password'
                     )
-                ),
-                "google_pay_merchant_id" => array(
-                    'title' => 'Google Pay merchant ID',
-                    'type' => 'text',
-                    'description' => 'Type here your google_pay_merchant_id to enable google pay button',
-                    'desc_tip' => true,
-                ),
-                'payment_public_name' => array(
-                    'title' => 'Merchant',
-                    'type' => 'text',
-                    'default' => 'Merchant',
-                ),
-                'description' => array(
-                    'title' => 'Description',
-                    'type' => 'textarea',
-                    'description' => 'This controls the description which the user sees during checkout.',
-                    'default' => 'Visa/Mastercard.',
-                ),
-                'public_key' => array(
-                    'title' => 'Public Key',
-                    'type' => 'text'
-                ),
-                'private_key' => array(
-                    'title' => 'Private Key',
-                    'type' => 'password'
-                ),
-                'webhook_public_key' => array(
-                    'title' => 'Webhook Public Key',
-                    'type' => 'text'
-                ),
-                'webhook_private_key' => array(
-                    'title' => 'Webhook Private Key',
-                    'type' => 'password'
-                )
             );
         }
 
         public function check_for_webhook()
         {
             if (!isset($_SERVER['REQUEST_METHOD'])
-                || ('POST' !== $_SERVER['REQUEST_METHOD'])
-                || !isset($_GET['wc-api'])
-                || ('solid_subscribe_hook' !== $_GET['wc-api'])
+                    || ('POST' !== $_SERVER['REQUEST_METHOD'])
+                    || !isset($_GET['wc-api'])
+                    || ('solid_subscribe_hook' !== $_GET['wc-api'])
             ) {
                 return;
             }
@@ -927,9 +952,9 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
 
             try {
                 $response = $this->api->refund([
-                    'order_id' => $transction_id,
-                    'amount' => intval($amount * 100),
-                    'refund_reason_code' => '0021'
+                        'order_id' => $transction_id,
+                        'amount' => intval($amount * 100),
+                        'refund_reason_code' => '0021'
                 ]);
 
                 WC_Solid_Subscribe_Logger::debug('Refund response: ' . print_r($response, true));
@@ -1008,31 +1033,31 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                     $sign_up_fee = WC_Subscriptions_Product::get_sign_up_fee($product_id);
                     $subscription_product_id = WC_Solid_Product_Model::get_product_mapping_by_product_id($product_id)->uuid;
 
-//                    $body_price = [
-//                        'product_id' => $subscription_product_id,
-//                        'location' => [
-//                            'ip_address' => $_SERVER['REMOTE_ADDR'],
-//                        ],
-//                    ];
+                    // $body_price = [
+                    //     'product_id' => $subscription_product_id,
+                    //     'location' => [
+                    //         'ip_address' => $_SERVER['REMOTE_ADDR'],
+                    //     ],
+                    // ];
 
-//                    WC_Solid_Subscribe_Logger::debug('Price calculation request: ' . print_r($body_price, true));
+                    // WC_Solid_Subscribe_Logger::debug('Price calculation request: ' . print_r($body_price, true));
 
-//                    $response = $this->api->calculatePrice($body_price);
+                    // $response = $this->api->calculatePrice($body_price);
 
-//                    WC_Solid_Subscribe_Logger::debug('Price calculation response: ' . print_r($response, true));
+                    // WC_Solid_Subscribe_Logger::debug('Price calculation response: ' . print_r($response, true));
 
-//                    if (!is_wp_error($response)) {
-//                        $body = json_decode($response, true);
-//                        $price_id = $body['price_id'];
-//                        WC_Solid_Subscribe_Logger::debug('Price ID: ' . print_r($price_id, true));
-//                    } else {
-//                        WC_Solid_Subscribe_Logger::debug('Price calculation failed: ' . print_r($response, true));
-//                        $price_id = $subscription_product_id;
-//                    }
+                    // if (!is_wp_error($response)) {
+                    //     $body = json_decode($response, true);
+                    //     $price_id = $body['price_id'];
+                    //     WC_Solid_Subscribe_Logger::debug('Price ID: ' . print_r($price_id, true));
+                    // } else {
+                    //     WC_Solid_Subscribe_Logger::debug('Price calculation failed: ' . print_r($response, true));
+                    //     $price_id = $subscription_product_id;
+                    // }
 
                     $country = $this->get_country_alpha3($this->get_user_currency());
 
-//                    WC_Solid_Subscribe_Logger::debug('Country: ' . print_r($country, true));
+                    // WC_Solid_Subscribe_Logger::debug('Country: ' . print_r($country, true));
 
                     if ($country) {
                         $price_mapping = WC_Solid_Product_List::get_product_list_by_country_name($product_id, $country);
@@ -1072,16 +1097,16 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
 
             // Загальні дані замовлення, незалежно від типу товару
             $common_order_data = [
-                'order_id' => $uniq_order_id,
-                'order_description' => $order_description,
-                'order_items' => $items_str,
-                'order_number' => $order_id,
-                'type' => 'auth',
-                'settle_interval' => 0,
-                'customer_email' => $order->get_billing_email(),
-                'customer_first_name' => $order->get_billing_first_name() ?: ' ',
-                'customer_last_name' => $order->get_billing_last_name() ?: ' ',
-                'website' => get_home_url(),
+                    'order_id' => $uniq_order_id,
+                    'order_description' => $order_description,
+                    'order_items' => $items_str,
+                    'order_number' => $order_id,
+                    'type' => 'auth',
+                    'settle_interval' => 0,
+                    'customer_email' => $order->get_billing_email(),
+                    'customer_first_name' => $order->get_billing_first_name() ?: ' ',
+                    'customer_last_name' => $order->get_billing_last_name() ?: ' ',
+                    'website' => get_home_url(),
             ];
 
             // Додаткові дані для підписки
@@ -1120,9 +1145,9 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
 
             // Налаштування сторінки замовлення
             $page_customization = [
-                'public_name' => $this->payment_public_name,
-                'order_title' => $order_title,
-                'order_description' => $order_body['order_description']
+                    'public_name' => $this->payment_public_name,
+                    'order_title' => $order_title,
+                    'order_description' => $order_body['order_description']
             ];
 
             // Додавання кастомних методів оплати, якщо вони є
@@ -1135,29 +1160,29 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                 WC_Solid_Subscribe_Logger::debug('$order_body: ' . print_r($order_body, true));
                 $response = $this->api->formMerchantData($order_body)->toArray();
                 return [
-                    'result' => 'success',
-                    "form" => $response,
-                    "redirects" => [
-                        'success_url' => $order_body['success_url'],
-                        'fail_url' => $order_body['fail_url'],
-                    ]
+                        'result' => 'success',
+                        "form" => $response,
+                        "redirects" => [
+                                'success_url' => $order_body['success_url'],
+                                'fail_url' => $order_body['fail_url'],
+                        ]
                 ];
             } else {
                 // Підготовка запиту для API, окреме тіло запиту для ініціалізації
                 $request_body = json_encode([
-                    'order' => $order_body,
-                    'page_customization' => $page_customization
+                        'order' => $order_body,
+                        'page_customization' => $page_customization
                 ]);
 
                 $signature = $this->api->generateSignature($request_body);
 
                 $args = [
-                    'headers' => [
-                        'merchant' => $this->public_key,
-                        'Signature' => $signature,
-                        'Content-Type' => 'application/json'
-                    ],
-                    'body' => $request_body
+                        'headers' => [
+                                'merchant' => $this->public_key,
+                                'Signature' => $signature,
+                                'Content-Type' => 'application/json'
+                        ],
+                        'body' => $request_body
                 ];
 
                 // Відправка запиту на ініціалізацію платежу
@@ -1269,25 +1294,25 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
 
             // Формуємо масив даних для Solidgate
             $data = [
-                'name' => $product->get_name(),
-                'description' => !empty($product->get_description()) ? $product->get_description() : $product->get_name(),
-                'status' => $product->get_status() === 'publish' ? 'active' : 'disabled',
-                'term_length' => 20,
-                'payment_action' => 'auth_settle',
-                'settle_interval' => 48,
-                'billing_period' => [
-                    'unit' => $subscription_period,
-                    'value' => intval($subscription_interval),
-                ],
+                    'name' => $product->get_name(),
+                    'description' => !empty($product->get_description()) ? $product->get_description() : $product->get_name(),
+                    'status' => $product->get_status() === 'publish' ? 'active' : 'disabled',
+                    'term_length' => 20,
+                    'payment_action' => 'auth_settle',
+                    'settle_interval' => 48,
+                    'billing_period' => [
+                            'unit' => $subscription_period,
+                            'value' => intval($subscription_interval),
+                    ],
             ];
 
             // Додаємо інформацію про тріал
             if ($free_trial_duration > 0 || $sign_up_fee > 0) {
                 $trial_data = [
-                    'billing_period' => [
-                        'unit' => $free_trial_duration > 0 ? $free_trial_period : $subscription_period,
-                        'value' => $free_trial_duration > 0 ? intval($free_trial_duration) : intval($subscription_interval),
-                    ],
+                        'billing_period' => [
+                                'unit' => $free_trial_duration > 0 ? $free_trial_period : $subscription_period,
+                                'value' => $free_trial_duration > 0 ? intval($free_trial_duration) : intval($subscription_interval),
+                        ],
                 ];
 
                 // Логіка для платного тріалу
@@ -1333,10 +1358,10 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             $price = $product->get_regular_price() ?: $product->get_sale_price();
             // Формування даних для ціни
             $dataPrice = [
-                'default' => true,
-                'status' => 'active',
-                'product_price' => (int)($price * 100),
-                'currency' => get_woocommerce_currency(),
+                    'default' => true,
+                    'status' => 'active',
+                    'product_price' => (int)($price * 100),
+                    'currency' => get_woocommerce_currency(),
             ];
 
             if ($free_trial_duration > 0) {
@@ -1423,28 +1448,28 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                 if (WC_Subscriptions_Product::is_subscription($product_id)) {
                     // Формуємо дані для запиту до Solidgate
                     $data = array(
-                        'plan_id' => WC_Solid_Product_Model::get_product_mapping_by_product_id($product_id)->uuid,
-                        'customer' => array(
-                            'email' => $order->get_billing_email(),
-                            'phone' => $order->get_billing_phone(),
-                            'first_name' => $order->get_billing_first_name(),
-                            'last_name' => $order->get_billing_last_name(),
-                        ),
-                        'currency' => $order->get_currency(),
-                        'amount' => WC_Subscriptions_Order::get_total_initial_payment($order) * 100, // Вказуємо в копійках/центах, залежно від вимог API
-                        'description' => 'Subscription for order #' . $order_id,
+                            'plan_id' => WC_Solid_Product_Model::get_product_mapping_by_product_id($product_id)->uuid,
+                            'customer' => array(
+                                    'email' => $order->get_billing_email(),
+                                    'phone' => $order->get_billing_phone(),
+                                    'first_name' => $order->get_billing_first_name(),
+                                    'last_name' => $order->get_billing_last_name(),
+                            ),
+                            'currency' => $order->get_currency(),
+                            'amount' => WC_Subscriptions_Order::get_total_initial_payment($order) * 100, // Вказуємо в копійках/центах, залежно від вимог API
+                            'description' => 'Subscription for order #' . $order_id,
                         // Інші необхідні поля залежно від документації Solidgate
                     );
 
                     // Виконуємо запит до Solidgate для створення підписки
                     $response = wp_remote_post('https://api.solidgate.com/subscriptions', array(
-                        'method' => 'POST',
-                        'headers' => array(
-                            'Content-Type' => 'application/json',
-                            'Merchant' => 'your-merchant-key',
-                            'Signature' => 'your-signature-key',
-                        ),
-                        'body' => json_encode($data),
+                            'method' => 'POST',
+                            'headers' => array(
+                                    'Content-Type' => 'application/json',
+                                    'Merchant' => 'your-merchant-key',
+                                    'Signature' => 'your-signature-key',
+                            ),
+                            'body' => json_encode($data),
                     ));
 
                     // Обробка відповіді від Solidgate
@@ -1493,12 +1518,12 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
 
             if ($subscription_id) {
                 add_meta_box(
-                    'subscription_meta_box',              // ID метабокса
-                    __('Subscription Details', 'textdomain'), // Назва метабокса
-                    [$this, 'display_subscription_meta_box'],      // Функція, яка виводить контент метабокса
-                    'shop_subscription',                    // Тип поста, для якого виводиться метабокс
-                    'side',                               // Розташування (side для правої колонки)
-                    'high'                                // Пріоритет відображення
+                        'subscription_meta_box',              // ID метабокса
+                        __('Subscription Details', 'textdomain'), // Назва метабокса
+                        [$this, 'display_subscription_meta_box'],      // Функція, яка виводить контент метабокса
+                        'shop_subscription',                    // Тип поста, для якого виводиться метабокс
+                        'side',                               // Розташування (side для правої колонки)
+                        'high'                                // Пріоритет відображення
                 );
             }
         }
@@ -1523,12 +1548,12 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
 
             if ($subscription_id && !in_array($subscription->get_status(), ['expired', 'cancelled'])) {
                 add_meta_box(
-                    'pause_meta_box',              // ID метабокса
-                    __('Subscription Pause', 'textdomain'),
-                    [$this, 'display_subscription_pause_meta_box'],
-                    'shop_subscription',
-                    'side',
-                    'high'
+                        'pause_meta_box',              // ID метабокса
+                        __('Subscription Pause', 'textdomain'),
+                        [$this, 'display_subscription_pause_meta_box'],
+                        'shop_subscription',
+                        'side',
+                        'high'
                 );
             }
         }
@@ -1553,12 +1578,12 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
 
             if ($subscription_id && in_array($subscription->get_status(), ['cancelled', 'expired'])) {
                 add_meta_box(
-                    'restore_meta_box',              // ID метабокса
-                    __('Subscription Restore', 'textdomain'),
-                    [$this, 'display_subscription_restore_meta_box'],
-                    'shop_subscription',
-                    'side',
-                    'high'
+                        'restore_meta_box',              // ID метабокса
+                        __('Subscription Restore', 'textdomain'),
+                        [$this, 'display_subscription_restore_meta_box'],
+                        'shop_subscription',
+                        'side',
+                        'high'
                 );
             }
         }
@@ -1580,12 +1605,12 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
 
             if ($solidgate_product_id) {
                 add_meta_box(
-                    'product_meta_box',              // ID метабокса
-                    __('Solidgate Product Details', 'textdomain'), // Назва метабокса
-                    [$this, 'display_product_meta_box'],      // Функція, яка виводить контент метабокса
-                    'product',                    // Тип поста, для якого виводиться метабокс
-                    'side',                               // Розташування (side для правої колонки)
-                    'high'                                // Пріоритет відображення
+                        'product_meta_box',              // ID метабокса
+                        __('Solidgate Product Details', 'textdomain'), // Назва метабокса
+                        [$this, 'display_product_meta_box'],      // Функція, яка виводить контент метабокса
+                        'product',                    // Тип поста, для якого виводиться метабокс
+                        'side',                               // Розташування (side для правої колонки)
+                        'high'                                // Пріоритет відображення
                 );
             }
         }
@@ -1605,7 +1630,7 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             if ($subscription_id) {
 
                 $data = [
-                    'subscription_id' => $subscription_id,
+                        'subscription_id' => $subscription_id,
                 ];
 
                 // Виконуємо запит до API для отримання деталей підписки
@@ -1833,14 +1858,14 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
 
 
                 $body = [
-                    'start_point' => [
-                        'type' => $start_point['type'],
+                        'start_point' => [
+                                'type' => $start_point['type'],
 //                        'date' => $start_point['date'] ?? null,
-                    ],
-                    'stop_point' => [
-                        'type' => $stop_point['type'],
+                        ],
+                        'stop_point' => [
+                                'type' => $stop_point['type'],
 //                        'date' => $stop_point['date'] ?? null,
-                    ],
+                        ],
                 ];
 
                 if ($start_point['type'] === 'specific_date') {
@@ -1961,7 +1986,7 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                 }
 
                 $data = [
-                    'subscription_id' => $subscription_uuid,
+                        'subscription_id' => $subscription_uuid,
                 ];
 
                 $response = $this->api->reactivateSubscription($data);
@@ -2018,9 +2043,9 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
             try {
                 if ($order) {
                     $new_subscription = wcs_create_subscription([
-                        'order_id' => $order_id,
-                        'billing_period' => $old_subscription->get_billing_period(),
-                        'billing_interval' => $old_subscription->get_billing_interval(),
+                            'order_id' => $order_id,
+                            'billing_period' => $old_subscription->get_billing_period(),
+                            'billing_interval' => $old_subscription->get_billing_interval(),
                     ]);
 
                     WC_Solid_Subscribe_Logger::debug('New Subscription ID: ' . print_r($new_subscription, true));
@@ -2032,7 +2057,7 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                     $new_subscription->set_customer_id($old_subscription->get_customer_id());
                     $new_subscription->set_payment_method($old_subscription->get_payment_method());
                     $new_subscription->set_customer_note(
-                        sprintf(__('Subscription renewed from #%s', 'textdomain'), $old_subscription->get_id())
+                            sprintf(__('Subscription renewed from #%s', 'textdomain'), $old_subscription->get_id())
                     );
 
                     foreach ($old_subscription->get_items() as $item) {
@@ -2043,8 +2068,8 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                         }
 
                         $new_subscription->add_product(
-                            $product,
-                            $item->get_quantity()
+                                $product,
+                                $item->get_quantity()
                         );
                     }
 
@@ -2095,42 +2120,42 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
         {
             if ($new_status === 'cancelled' && $old_status === 'on-hold') {
                 $data = [
-                    'subscription_id' => $subscription_id,
-                    'force' => true,
-                    'cancel_code' => '8.06',
+                        'subscription_id' => $subscription_id,
+                        'force' => true,
+                        'cancel_code' => '8.06',
                 ];
                 $response = $this->api->cancelSubscription($data);
             } elseif ($new_status === 'cancelled' && $old_status === 'active') {
                 $data = [
-                    'subscription_id' => $subscription_id,
-                    'force' => true,
-                    'cancel_code' => '8.06',
+                        'subscription_id' => $subscription_id,
+                        'force' => true,
+                        'cancel_code' => '8.06',
                 ];
                 $response = $this->api->cancelSubscription($data);
             } elseif ($new_status === 'pending-cancel' && $old_status === 'active') {
                 $data = [
-                    'subscription_id' => $subscription_id,
-                    'force' => false,
-                    'cancel_code' => '8.06',
+                        'subscription_id' => $subscription_id,
+                        'force' => false,
+                        'cancel_code' => '8.06',
                 ];
                 $response = $this->api->cancelSubscription($data);
             } elseif ($new_status === 'pending-cancel' && $old_status === 'on-hold') {
                 $data = [
-                    'subscription_id' => $subscription_id,
-                    'force' => false,
-                    'cancel_code' => '8.06',
+                        'subscription_id' => $subscription_id,
+                        'force' => false,
+                        'cancel_code' => '8.06',
                 ];
                 $response = $this->api->cancelSubscription($data);
             } elseif ($new_status === 'cancelled' && $old_status === 'pending-cancel') {
                 $data = [
-                    'subscription_id' => $subscription_id,
-                    'force' => true,
-                    'cancel_code' => '8.06',
+                        'subscription_id' => $subscription_id,
+                        'force' => true,
+                        'cancel_code' => '8.06',
                 ];
                 $response = $this->api->cancelSubscription($data);
             } elseif ($new_status === 'active' && $old_status === 'pending-cancel') {
                 $data = [
-                    'subscription_id' => $subscription_id,
+                        'subscription_id' => $subscription_id,
                 ];
                 $response = $this->api->reactivateSubscription($data);
             } else {
@@ -2148,9 +2173,9 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
                 $subscription_uuid = WC_Solid_Subscribe_Model::get_subscription_mapping_by_subscription_id($subscription->get_id())->uuid;
 
                 $data = [
-                    'subscription_id' => $subscription_uuid,
-                    'force' => false,
-                    'cancel_code' => '8.06',
+                        'subscription_id' => $subscription_uuid,
+                        'force' => false,
+                        'cancel_code' => '8.06',
                 ];
 
                 $response = $this->api->cancelSubscription($data);
@@ -2168,12 +2193,12 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
         public function error_code_lookup($code): string
         {
             $messages = array(
-                '3.02' => 'Not enough funds for payment on the card. Please try to use another card or choose another payment method.',
-                '2.06' => 'CVV code is wrong. CVV code is the last three digits on the back of the card. Please, try again.',
-                '2.08' => 'Card number is wrong. Enter the card number exactly as it is written on your bank card.',
-                '2.09' => 'This card has expired. Try using another card.',
-                '3.06' => 'Unfortunately, debit cards do not support online payments. Try using a credit card or choose another payment method. ',
-                '4.09' => 'Your payment was declined due to technical error. Please contact support team.',
+                    '3.02' => 'Not enough funds for payment on the card. Please try to use another card or choose another payment method.',
+                    '2.06' => 'CVV code is wrong. CVV code is the last three digits on the back of the card. Please, try again.',
+                    '2.08' => 'Card number is wrong. Enter the card number exactly as it is written on your bank card.',
+                    '2.09' => 'This card has expired. Try using another card.',
+                    '3.06' => 'Unfortunately, debit cards do not support online payments. Try using a credit card or choose another payment method. ',
+                    '4.09' => 'Your payment was declined due to technical error. Please contact support team.',
             );
             return $messages[$code] ?? 'Card is blocked for the Internet payments. Contact support of your bank to unblock your card or use another card.';
         }
@@ -2181,656 +2206,656 @@ if (!class_exists('WC_Solid_Gateway_Subscribe')) {
         private function get_iso_4217_currencies(): array
         {
             return [
-                ['code' => 'AED', 'name' => 'United Arab Emirates Dirham'],
-                ['code' => 'AFN', 'name' => 'Afghan Afghani'],
-                ['code' => 'ALL', 'name' => 'Albanian Lek'],
-                ['code' => 'AMD', 'name' => 'Armenian Dram'],
-                ['code' => 'ANG', 'name' => 'Netherlands Antillean Guilder'],
-                ['code' => 'AOA', 'name' => 'Angolan Kwanza'],
-                ['code' => 'ARS', 'name' => 'Argentine Peso'],
-                ['code' => 'AUD', 'name' => 'Australian Dollar'],
-                ['code' => 'AWG', 'name' => 'Aruban Florin'],
-                ['code' => 'AZN', 'name' => 'Azerbaijani Manat'],
-                ['code' => 'BAM', 'name' => 'Bosnia-Herzegovina Convertible Mark'],
-                ['code' => 'BBD', 'name' => 'Barbadian Dollar'],
-                ['code' => 'BDT', 'name' => 'Bangladeshi Taka'],
-                ['code' => 'BGN', 'name' => 'Bulgarian Lev'],
-                ['code' => 'BHD', 'name' => 'Bahraini Dinar'],
-                ['code' => 'BIF', 'name' => 'Burundian Franc'],
-                ['code' => 'BMD', 'name' => 'Bermudian Dollar'],
-                ['code' => 'BND', 'name' => 'Brunei Dollar'],
-                ['code' => 'BOB', 'name' => 'Bolivian Boliviano'],
-                ['code' => 'BRL', 'name' => 'Brazilian Real'],
-                ['code' => 'BSD', 'name' => 'Bahamian Dollar'],
-                ['code' => 'BTN', 'name' => 'Bhutanese Ngultrum'],
-                ['code' => 'BWP', 'name' => 'Botswana Pula'],
-                ['code' => 'BYN', 'name' => 'Belarusian Ruble'],
-                ['code' => 'BZD', 'name' => 'Belize Dollar'],
-                ['code' => 'CAD', 'name' => 'Canadian Dollar'],
-                ['code' => 'CDF', 'name' => 'Congolese Franc'],
-                ['code' => 'CHF', 'name' => 'Swiss Franc'],
-                ['code' => 'CLP', 'name' => 'Chilean Peso'],
-                ['code' => 'CNY', 'name' => 'Chinese Yuan'],
-                ['code' => 'COP', 'name' => 'Colombian Peso'],
-                ['code' => 'CRC', 'name' => 'Costa Rican Colón'],
-                ['code' => 'CUP', 'name' => 'Cuban Peso'],
-                ['code' => 'CVE', 'name' => 'Cape Verdean Escudo'],
-                ['code' => 'CZK', 'name' => 'Czech Koruna'],
-                ['code' => 'DJF', 'name' => 'Djiboutian Franc'],
-                ['code' => 'DKK', 'name' => 'Danish Krone'],
-                ['code' => 'DOP', 'name' => 'Dominican Peso'],
-                ['code' => 'DZD', 'name' => 'Algerian Dinar'],
-                ['code' => 'EGP', 'name' => 'Egyptian Pound'],
-                ['code' => 'ERN', 'name' => 'Eritrean Nakfa'],
-                ['code' => 'ETB', 'name' => 'Ethiopian Birr'],
-                ['code' => 'EUR', 'name' => 'Euro'],
-                ['code' => 'FJD', 'name' => 'Fijian Dollar'],
-                ['code' => 'FKP', 'name' => 'Falkland Islands Pound'],
-                ['code' => 'FOK', 'name' => 'Faroese Króna'],
-                ['code' => 'GBP', 'name' => 'British Pound'],
-                ['code' => 'GEL', 'name' => 'Georgian Lari'],
-                ['code' => 'GHS', 'name' => 'Ghanaian Cedi'],
-                ['code' => 'GIP', 'name' => 'Gibraltar Pound'],
-                ['code' => 'GMD', 'name' => 'Gambian Dalasi'],
-                ['code' => 'GNF', 'name' => 'Guinean Franc'],
-                ['code' => 'GTQ', 'name' => 'Guatemalan Quetzal'],
-                ['code' => 'GYD', 'name' => 'Guyanese Dollar'],
-                ['code' => 'HKD', 'name' => 'Hong Kong Dollar'],
-                ['code' => 'HNL', 'name' => 'Honduran Lempira'],
-                ['code' => 'HRK', 'name' => 'Croatian Kuna'],
-                ['code' => 'HTG', 'name' => 'Haitian Gourde'],
-                ['code' => 'HUF', 'name' => 'Hungarian Forint'],
-                ['code' => 'IDR', 'name' => 'Indonesian Rupiah'],
-                ['code' => 'ILS', 'name' => 'Israeli New Shekel'],
-                ['code' => 'INR', 'name' => 'Indian Rupee'],
-                ['code' => 'IQD', 'name' => 'Iraqi Dinar'],
-                ['code' => 'IRR', 'name' => 'Iranian Rial'],
-                ['code' => 'ISK', 'name' => 'Icelandic Króna'],
-                ['code' => 'JMD', 'name' => 'Jamaican Dollar'],
-                ['code' => 'JOD', 'name' => 'Jordanian Dinar'],
-                ['code' => 'JPY', 'name' => 'Japanese Yen'],
-                ['code' => 'KES', 'name' => 'Kenyan Shilling'],
-                ['code' => 'KGS', 'name' => 'Kyrgyzstani Som'],
-                ['code' => 'KHR', 'name' => 'Cambodian Riel'],
-                ['code' => 'KPW', 'name' => 'North Korean Won'],
-                ['code' => 'KRW', 'name' => 'South Korean Won'],
-                ['code' => 'KWD', 'name' => 'Kuwaiti Dinar'],
-                ['code' => 'KYD', 'name' => 'Cayman Islands Dollar'],
-                ['code' => 'KZT', 'name' => 'Kazakhstani Tenge'],
-                ['code' => 'LAK', 'name' => 'Lao Kip'],
-                ['code' => 'LBP', 'name' => 'Lebanese Pound'],
-                ['code' => 'LKR', 'name' => 'Sri Lankan Rupee'],
-                ['code' => 'LRD', 'name' => 'Liberian Dollar'],
-                ['code' => 'LSL', 'name' => 'Lesotho Loti'],
-                ['code' => 'LYD', 'name' => 'Libyan Dinar'],
-                ['code' => 'MAD', 'name' => 'Moroccan Dirham'],
-                ['code' => 'MDL', 'name' => 'Moldovan Leu'],
-                ['code' => 'MGA', 'name' => 'Malagasy Ariary'],
-                ['code' => 'MKD', 'name' => 'Macedonian Denar'],
-                ['code' => 'MMK', 'name' => 'Myanmar Kyat'],
-                ['code' => 'MNT', 'name' => 'Mongolian Tögrög'],
-                ['code' => 'MOP', 'name' => 'Macanese Pataca'],
-                ['code' => 'MRU', 'name' => 'Mauritanian Ouguiya'],
-                ['code' => 'MUR', 'name' => 'Mauritian Rupee'],
-                ['code' => 'MVR', 'name' => 'Maldivian Rufiyaa'],
-                ['code' => 'MWK', 'name' => 'Malawian Kwacha'],
-                ['code' => 'MXN', 'name' => 'Mexican Peso'],
-                ['code' => 'MYR', 'name' => 'Malaysian Ringgit'],
-                ['code' => 'MZN', 'name' => 'Mozambican Metical'],
-                ['code' => 'NAD', 'name' => 'Namibian Dollar'],
-                ['code' => 'NGN', 'name' => 'Nigerian Naira'],
-                ['code' => 'NOK', 'name' => 'Norwegian Krone'],
-                ['code' => 'NPR', 'name' => 'Nepalese Rupee'],
-                ['code' => 'NZD', 'name' => 'New Zealand Dollar'],
-                ['code' => 'OMR', 'name' => 'Omani Rial'],
-                ['code' => 'PAB', 'name' => 'Panamanian Balboa'],
-                ['code' => 'PEN', 'name' => 'Peruvian Sol'],
-                ['code' => 'PGK', 'name' => 'Papua New Guinean Kina'],
-                ['code' => 'PHP', 'name' => 'Philippine Peso'],
-                ['code' => 'PKR', 'name' => 'Pakistani Rupee'],
-                ['code' => 'PLN', 'name' => 'Polish Złoty'],
-                ['code' => 'PYG', 'name' => 'Paraguayan Guaraní'],
-                ['code' => 'QAR', 'name' => 'Qatari Riyal'],
-                ['code' => 'RON', 'name' => 'Romanian Leu'],
-                ['code' => 'RSD', 'name' => 'Serbian Dinar'],
-                ['code' => 'RUB', 'name' => 'Russian Ruble'],
-                ['code' => 'RWF', 'name' => 'Rwandan Franc'],
-                ['code' => 'SAR', 'name' => 'Saudi Riyal'],
-                ['code' => 'SBD', 'name' => 'Solomon Islands Dollar'],
-                ['code' => 'SCR', 'name' => 'Seychellois Rupee'],
-                ['code' => 'SDG', 'name' => 'Sudanese Pound'],
-                ['code' => 'SEK', 'name' => 'Swedish Krona'],
-                ['code' => 'SGD', 'name' => 'Singapore Dollar'],
-                ['code' => 'SHP', 'name' => 'Saint Helena Pound'],
-                ['code' => 'SLL', 'name' => 'Sierra Leonean Leone'],
-                ['code' => 'SOS', 'name' => 'Somali Shilling'],
-                ['code' => 'SRD', 'name' => 'Surinamese Dollar'],
-                ['code' => 'SSP', 'name' => 'South Sudanese Pound'],
-                ['code' => 'STN', 'name' => 'São Tomé and Príncipe Dobra'],
-                ['code' => 'SYP', 'name' => 'Syrian Pound'],
-                ['code' => 'SZL', 'name' => 'Eswatini Lilangeni'],
-                ['code' => 'THB', 'name' => 'Thai Baht'],
-                ['code' => 'TJS', 'name' => 'Tajikistani Somoni'],
-                ['code' => 'TMT', 'name' => 'Turkmenistani Manat'],
-                ['code' => 'TND', 'name' => 'Tunisian Dinar'],
-                ['code' => 'TOP', 'name' => 'Tongan Paʻanga'],
-                ['code' => 'TRY', 'name' => 'Turkish Lira'],
-                ['code' => 'TTD', 'name' => 'Trinidad and Tobago Dollar'],
-                ['code' => 'TWD', 'name' => 'New Taiwan Dollar'],
-                ['code' => 'TZS', 'name' => 'Tanzanian Shilling'],
-                ['code' => 'UAH', 'name' => 'Ukrainian Hryvnia'],
-                ['code' => 'UGX', 'name' => 'Ugandan Shilling'],
-                ['code' => 'USD', 'name' => 'United States Dollar'],
-                ['code' => 'UYU', 'name' => 'Uruguayan Peso'],
-                ['code' => 'UZS', 'name' => 'Uzbekistani Soʻm'],
-                ['code' => 'VES', 'name' => 'Venezuelan Bolívar'],
-                ['code' => 'VND', 'name' => 'Vietnamese Đồng'],
-                ['code' => 'XAF', 'name' => 'Central African CFA Franc'],
-                ['code' => 'XCD', 'name' => 'East Caribbean Dollar'],
-                ['code' => 'XOF', 'name' => 'West African CFA Franc'],
-                ['code' => 'XPF', 'name' => 'CFP Franc'],
-                ['code' => 'YER', 'name' => 'Yemeni Rial'],
-                ['code' => 'ZAR', 'name' => 'South African Rand'],
-                ['code' => 'ZMW', 'name' => 'Zambian Kwacha'],
-                ['code' => 'ZWL', 'name' => 'Zimbabwean Dollar'],
+                    ['code' => 'AED', 'name' => 'United Arab Emirates Dirham'],
+                    ['code' => 'AFN', 'name' => 'Afghan Afghani'],
+                    ['code' => 'ALL', 'name' => 'Albanian Lek'],
+                    ['code' => 'AMD', 'name' => 'Armenian Dram'],
+                    ['code' => 'ANG', 'name' => 'Netherlands Antillean Guilder'],
+                    ['code' => 'AOA', 'name' => 'Angolan Kwanza'],
+                    ['code' => 'ARS', 'name' => 'Argentine Peso'],
+                    ['code' => 'AUD', 'name' => 'Australian Dollar'],
+                    ['code' => 'AWG', 'name' => 'Aruban Florin'],
+                    ['code' => 'AZN', 'name' => 'Azerbaijani Manat'],
+                    ['code' => 'BAM', 'name' => 'Bosnia-Herzegovina Convertible Mark'],
+                    ['code' => 'BBD', 'name' => 'Barbadian Dollar'],
+                    ['code' => 'BDT', 'name' => 'Bangladeshi Taka'],
+                    ['code' => 'BGN', 'name' => 'Bulgarian Lev'],
+                    ['code' => 'BHD', 'name' => 'Bahraini Dinar'],
+                    ['code' => 'BIF', 'name' => 'Burundian Franc'],
+                    ['code' => 'BMD', 'name' => 'Bermudian Dollar'],
+                    ['code' => 'BND', 'name' => 'Brunei Dollar'],
+                    ['code' => 'BOB', 'name' => 'Bolivian Boliviano'],
+                    ['code' => 'BRL', 'name' => 'Brazilian Real'],
+                    ['code' => 'BSD', 'name' => 'Bahamian Dollar'],
+                    ['code' => 'BTN', 'name' => 'Bhutanese Ngultrum'],
+                    ['code' => 'BWP', 'name' => 'Botswana Pula'],
+                    ['code' => 'BYN', 'name' => 'Belarusian Ruble'],
+                    ['code' => 'BZD', 'name' => 'Belize Dollar'],
+                    ['code' => 'CAD', 'name' => 'Canadian Dollar'],
+                    ['code' => 'CDF', 'name' => 'Congolese Franc'],
+                    ['code' => 'CHF', 'name' => 'Swiss Franc'],
+                    ['code' => 'CLP', 'name' => 'Chilean Peso'],
+                    ['code' => 'CNY', 'name' => 'Chinese Yuan'],
+                    ['code' => 'COP', 'name' => 'Colombian Peso'],
+                    ['code' => 'CRC', 'name' => 'Costa Rican Colón'],
+                    ['code' => 'CUP', 'name' => 'Cuban Peso'],
+                    ['code' => 'CVE', 'name' => 'Cape Verdean Escudo'],
+                    ['code' => 'CZK', 'name' => 'Czech Koruna'],
+                    ['code' => 'DJF', 'name' => 'Djiboutian Franc'],
+                    ['code' => 'DKK', 'name' => 'Danish Krone'],
+                    ['code' => 'DOP', 'name' => 'Dominican Peso'],
+                    ['code' => 'DZD', 'name' => 'Algerian Dinar'],
+                    ['code' => 'EGP', 'name' => 'Egyptian Pound'],
+                    ['code' => 'ERN', 'name' => 'Eritrean Nakfa'],
+                    ['code' => 'ETB', 'name' => 'Ethiopian Birr'],
+                    ['code' => 'EUR', 'name' => 'Euro'],
+                    ['code' => 'FJD', 'name' => 'Fijian Dollar'],
+                    ['code' => 'FKP', 'name' => 'Falkland Islands Pound'],
+                    ['code' => 'FOK', 'name' => 'Faroese Króna'],
+                    ['code' => 'GBP', 'name' => 'British Pound'],
+                    ['code' => 'GEL', 'name' => 'Georgian Lari'],
+                    ['code' => 'GHS', 'name' => 'Ghanaian Cedi'],
+                    ['code' => 'GIP', 'name' => 'Gibraltar Pound'],
+                    ['code' => 'GMD', 'name' => 'Gambian Dalasi'],
+                    ['code' => 'GNF', 'name' => 'Guinean Franc'],
+                    ['code' => 'GTQ', 'name' => 'Guatemalan Quetzal'],
+                    ['code' => 'GYD', 'name' => 'Guyanese Dollar'],
+                    ['code' => 'HKD', 'name' => 'Hong Kong Dollar'],
+                    ['code' => 'HNL', 'name' => 'Honduran Lempira'],
+                    ['code' => 'HRK', 'name' => 'Croatian Kuna'],
+                    ['code' => 'HTG', 'name' => 'Haitian Gourde'],
+                    ['code' => 'HUF', 'name' => 'Hungarian Forint'],
+                    ['code' => 'IDR', 'name' => 'Indonesian Rupiah'],
+                    ['code' => 'ILS', 'name' => 'Israeli New Shekel'],
+                    ['code' => 'INR', 'name' => 'Indian Rupee'],
+                    ['code' => 'IQD', 'name' => 'Iraqi Dinar'],
+                    ['code' => 'IRR', 'name' => 'Iranian Rial'],
+                    ['code' => 'ISK', 'name' => 'Icelandic Króna'],
+                    ['code' => 'JMD', 'name' => 'Jamaican Dollar'],
+                    ['code' => 'JOD', 'name' => 'Jordanian Dinar'],
+                    ['code' => 'JPY', 'name' => 'Japanese Yen'],
+                    ['code' => 'KES', 'name' => 'Kenyan Shilling'],
+                    ['code' => 'KGS', 'name' => 'Kyrgyzstani Som'],
+                    ['code' => 'KHR', 'name' => 'Cambodian Riel'],
+                    ['code' => 'KPW', 'name' => 'North Korean Won'],
+                    ['code' => 'KRW', 'name' => 'South Korean Won'],
+                    ['code' => 'KWD', 'name' => 'Kuwaiti Dinar'],
+                    ['code' => 'KYD', 'name' => 'Cayman Islands Dollar'],
+                    ['code' => 'KZT', 'name' => 'Kazakhstani Tenge'],
+                    ['code' => 'LAK', 'name' => 'Lao Kip'],
+                    ['code' => 'LBP', 'name' => 'Lebanese Pound'],
+                    ['code' => 'LKR', 'name' => 'Sri Lankan Rupee'],
+                    ['code' => 'LRD', 'name' => 'Liberian Dollar'],
+                    ['code' => 'LSL', 'name' => 'Lesotho Loti'],
+                    ['code' => 'LYD', 'name' => 'Libyan Dinar'],
+                    ['code' => 'MAD', 'name' => 'Moroccan Dirham'],
+                    ['code' => 'MDL', 'name' => 'Moldovan Leu'],
+                    ['code' => 'MGA', 'name' => 'Malagasy Ariary'],
+                    ['code' => 'MKD', 'name' => 'Macedonian Denar'],
+                    ['code' => 'MMK', 'name' => 'Myanmar Kyat'],
+                    ['code' => 'MNT', 'name' => 'Mongolian Tögrög'],
+                    ['code' => 'MOP', 'name' => 'Macanese Pataca'],
+                    ['code' => 'MRU', 'name' => 'Mauritanian Ouguiya'],
+                    ['code' => 'MUR', 'name' => 'Mauritian Rupee'],
+                    ['code' => 'MVR', 'name' => 'Maldivian Rufiyaa'],
+                    ['code' => 'MWK', 'name' => 'Malawian Kwacha'],
+                    ['code' => 'MXN', 'name' => 'Mexican Peso'],
+                    ['code' => 'MYR', 'name' => 'Malaysian Ringgit'],
+                    ['code' => 'MZN', 'name' => 'Mozambican Metical'],
+                    ['code' => 'NAD', 'name' => 'Namibian Dollar'],
+                    ['code' => 'NGN', 'name' => 'Nigerian Naira'],
+                    ['code' => 'NOK', 'name' => 'Norwegian Krone'],
+                    ['code' => 'NPR', 'name' => 'Nepalese Rupee'],
+                    ['code' => 'NZD', 'name' => 'New Zealand Dollar'],
+                    ['code' => 'OMR', 'name' => 'Omani Rial'],
+                    ['code' => 'PAB', 'name' => 'Panamanian Balboa'],
+                    ['code' => 'PEN', 'name' => 'Peruvian Sol'],
+                    ['code' => 'PGK', 'name' => 'Papua New Guinean Kina'],
+                    ['code' => 'PHP', 'name' => 'Philippine Peso'],
+                    ['code' => 'PKR', 'name' => 'Pakistani Rupee'],
+                    ['code' => 'PLN', 'name' => 'Polish Złoty'],
+                    ['code' => 'PYG', 'name' => 'Paraguayan Guaraní'],
+                    ['code' => 'QAR', 'name' => 'Qatari Riyal'],
+                    ['code' => 'RON', 'name' => 'Romanian Leu'],
+                    ['code' => 'RSD', 'name' => 'Serbian Dinar'],
+                    ['code' => 'RUB', 'name' => 'Russian Ruble'],
+                    ['code' => 'RWF', 'name' => 'Rwandan Franc'],
+                    ['code' => 'SAR', 'name' => 'Saudi Riyal'],
+                    ['code' => 'SBD', 'name' => 'Solomon Islands Dollar'],
+                    ['code' => 'SCR', 'name' => 'Seychellois Rupee'],
+                    ['code' => 'SDG', 'name' => 'Sudanese Pound'],
+                    ['code' => 'SEK', 'name' => 'Swedish Krona'],
+                    ['code' => 'SGD', 'name' => 'Singapore Dollar'],
+                    ['code' => 'SHP', 'name' => 'Saint Helena Pound'],
+                    ['code' => 'SLL', 'name' => 'Sierra Leonean Leone'],
+                    ['code' => 'SOS', 'name' => 'Somali Shilling'],
+                    ['code' => 'SRD', 'name' => 'Surinamese Dollar'],
+                    ['code' => 'SSP', 'name' => 'South Sudanese Pound'],
+                    ['code' => 'STN', 'name' => 'São Tomé and Príncipe Dobra'],
+                    ['code' => 'SYP', 'name' => 'Syrian Pound'],
+                    ['code' => 'SZL', 'name' => 'Eswatini Lilangeni'],
+                    ['code' => 'THB', 'name' => 'Thai Baht'],
+                    ['code' => 'TJS', 'name' => 'Tajikistani Somoni'],
+                    ['code' => 'TMT', 'name' => 'Turkmenistani Manat'],
+                    ['code' => 'TND', 'name' => 'Tunisian Dinar'],
+                    ['code' => 'TOP', 'name' => 'Tongan Paʻanga'],
+                    ['code' => 'TRY', 'name' => 'Turkish Lira'],
+                    ['code' => 'TTD', 'name' => 'Trinidad and Tobago Dollar'],
+                    ['code' => 'TWD', 'name' => 'New Taiwan Dollar'],
+                    ['code' => 'TZS', 'name' => 'Tanzanian Shilling'],
+                    ['code' => 'UAH', 'name' => 'Ukrainian Hryvnia'],
+                    ['code' => 'UGX', 'name' => 'Ugandan Shilling'],
+                    ['code' => 'USD', 'name' => 'United States Dollar'],
+                    ['code' => 'UYU', 'name' => 'Uruguayan Peso'],
+                    ['code' => 'UZS', 'name' => 'Uzbekistani Soʻm'],
+                    ['code' => 'VES', 'name' => 'Venezuelan Bolívar'],
+                    ['code' => 'VND', 'name' => 'Vietnamese Đồng'],
+                    ['code' => 'XAF', 'name' => 'Central African CFA Franc'],
+                    ['code' => 'XCD', 'name' => 'East Caribbean Dollar'],
+                    ['code' => 'XOF', 'name' => 'West African CFA Franc'],
+                    ['code' => 'XPF', 'name' => 'CFP Franc'],
+                    ['code' => 'YER', 'name' => 'Yemeni Rial'],
+                    ['code' => 'ZAR', 'name' => 'South African Rand'],
+                    ['code' => 'ZMW', 'name' => 'Zambian Kwacha'],
+                    ['code' => 'ZWL', 'name' => 'Zimbabwean Dollar'],
             ];
         }
 
         private function get_iso_3166_countries(): array
         {
             return [
-                ['code' => 'AFG', 'name' => 'Afghanistan'],
-                ['code' => 'ALB', 'name' => 'Albania'],
-                ['code' => 'DZA', 'name' => 'Algeria'],
-                ['code' => 'ASM', 'name' => 'American Samoa'],
-                ['code' => 'AND', 'name' => 'Andorra'],
-                ['code' => 'AGO', 'name' => 'Angola'],
-                ['code' => 'AIA', 'name' => 'Anguilla'],
-                ['code' => 'ATA', 'name' => 'Antarctica'],
-                ['code' => 'ATG', 'name' => 'Antigua and Barbuda'],
-                ['code' => 'ARG', 'name' => 'Argentina'],
-                ['code' => 'ARM', 'name' => 'Armenia'],
-                ['code' => 'ABW', 'name' => 'Aruba'],
-                ['code' => 'AUS', 'name' => 'Australia'],
-                ['code' => 'AUT', 'name' => 'Austria'],
-                ['code' => 'AZE', 'name' => 'Azerbaijan'],
-                ['code' => 'BHS', 'name' => 'Bahamas'],
-                ['code' => 'BHR', 'name' => 'Bahrain'],
-                ['code' => 'BGD', 'name' => 'Bangladesh'],
-                ['code' => 'BRB', 'name' => 'Barbados'],
-                ['code' => 'BLR', 'name' => 'Belarus'],
-                ['code' => 'BEL', 'name' => 'Belgium'],
-                ['code' => 'BLZ', 'name' => 'Belize'],
-                ['code' => 'BEN', 'name' => 'Benin'],
-                ['code' => 'BMU', 'name' => 'Bermuda'],
-                ['code' => 'BTN', 'name' => 'Bhutan'],
-                ['code' => 'BOL', 'name' => 'Bolivia'],
-                ['code' => 'BIH', 'name' => 'Bosnia and Herzegovina'],
-                ['code' => 'BWA', 'name' => 'Botswana'],
-                ['code' => 'BVT', 'name' => 'Bouvet Island'],
-                ['code' => 'BRA', 'name' => 'Brazil'],
-                ['code' => 'IOT', 'name' => 'British Indian Ocean Territory'],
-                ['code' => 'BRN', 'name' => 'Brunei Darussalam'],
-                ['code' => 'BGR', 'name' => 'Bulgaria'],
-                ['code' => 'BFA', 'name' => 'Burkina Faso'],
-                ['code' => 'BDI', 'name' => 'Burundi'],
-                ['code' => 'CPV', 'name' => 'Cabo Verde'],
-                ['code' => 'KHM', 'name' => 'Cambodia'],
-                ['code' => 'CMR', 'name' => 'Cameroon'],
-                ['code' => 'CAN', 'name' => 'Canada'],
-                ['code' => 'CYM', 'name' => 'Cayman Islands'],
-                ['code' => 'CAF', 'name' => 'Central African Republic'],
-                ['code' => 'TCD', 'name' => 'Chad'],
-                ['code' => 'CHL', 'name' => 'Chile'],
-                ['code' => 'CHN', 'name' => 'China'],
-                ['code' => 'CXR', 'name' => 'Christmas Island'],
-                ['code' => 'CCK', 'name' => 'Cocos (Keeling) Islands'],
-                ['code' => 'COL', 'name' => 'Colombia'],
-                ['code' => 'COM', 'name' => 'Comoros'],
-                ['code' => 'COG', 'name' => 'Congo'],
-                ['code' => 'COD', 'name' => 'Congo (Democratic Republic of the)'],
-                ['code' => 'COK', 'name' => 'Cook Islands'],
-                ['code' => 'CRI', 'name' => 'Costa Rica'],
-                ['code' => 'HRV', 'name' => 'Croatia'],
-                ['code' => 'CUB', 'name' => 'Cuba'],
-                ['code' => 'CUW', 'name' => 'Curaçao'],
-                ['code' => 'CYP', 'name' => 'Cyprus'],
-                ['code' => 'CZE', 'name' => 'Czechia'],
-                ['code' => 'DNK', 'name' => 'Denmark'],
-                ['code' => 'DJI', 'name' => 'Djibouti'],
-                ['code' => 'DMA', 'name' => 'Dominica'],
-                ['code' => 'DOM', 'name' => 'Dominican Republic'],
-                ['code' => 'ECU', 'name' => 'Ecuador'],
-                ['code' => 'EGY', 'name' => 'Egypt'],
-                ['code' => 'SLV', 'name' => 'El Salvador'],
-                ['code' => 'GNQ', 'name' => 'Equatorial Guinea'],
-                ['code' => 'ERI', 'name' => 'Eritrea'],
-                ['code' => 'EST', 'name' => 'Estonia'],
-                ['code' => 'SWZ', 'name' => 'Eswatini'],
-                ['code' => 'ETH', 'name' => 'Ethiopia'],
-                ['code' => 'FLK', 'name' => 'Falkland Islands (Malvinas)'],
-                ['code' => 'FRO', 'name' => 'Faroe Islands'],
-                ['code' => 'FJI', 'name' => 'Fiji'],
-                ['code' => 'FIN', 'name' => 'Finland'],
-                ['code' => 'FRA', 'name' => 'France'],
-                ['code' => 'GUF', 'name' => 'French Guiana'],
-                ['code' => 'PYF', 'name' => 'French Polynesia'],
-                ['code' => 'ATF', 'name' => 'French Southern Territories'],
-                ['code' => 'GAB', 'name' => 'Gabon'],
-                ['code' => 'GMB', 'name' => 'Gambia'],
-                ['code' => 'GEO', 'name' => 'Georgia'],
-                ['code' => 'DEU', 'name' => 'Germany'],
-                ['code' => 'GHA', 'name' => 'Ghana'],
-                ['code' => 'GIB', 'name' => 'Gibraltar'],
-                ['code' => 'GRC', 'name' => 'Greece'],
-                ['code' => 'GRL', 'name' => 'Greenland'],
-                ['code' => 'GRD', 'name' => 'Grenada'],
-                ['code' => 'GLP', 'name' => 'Guadeloupe'],
-                ['code' => 'GUM', 'name' => 'Guam'],
-                ['code' => 'GTM', 'name' => 'Guatemala'],
-                ['code' => 'GGY', 'name' => 'Guernsey'],
-                ['code' => 'GIN', 'name' => 'Guinea'],
-                ['code' => 'GNB', 'name' => 'Guinea-Bissau'],
-                ['code' => 'GUY', 'name' => 'Guyana'],
-                ['code' => 'HTI', 'name' => 'Haiti'],
-                ['code' => 'HMD', 'name' => 'Heard Island and McDonald Islands'],
-                ['code' => 'VAT', 'name' => 'Holy See'],
-                ['code' => 'HND', 'name' => 'Honduras'],
-                ['code' => 'HKG', 'name' => 'Hong Kong'],
-                ['code' => 'HUN', 'name' => 'Hungary'],
-                ['code' => 'ISL', 'name' => 'Iceland'],
-                ['code' => 'IND', 'name' => 'India'],
-                ['code' => 'IDN', 'name' => 'Indonesia'],
-                ['code' => 'IRN', 'name' => 'Iran'],
-                ['code' => 'IRQ', 'name' => 'Iraq'],
-                ['code' => 'IRL', 'name' => 'Ireland'],
-                ['code' => 'IMN', 'name' => 'Isle of Man'],
-                ['code' => 'ISR', 'name' => 'Israel'],
-                ['code' => 'ITA', 'name' => 'Italy'],
-                ['code' => 'JAM', 'name' => 'Jamaica'],
-                ['code' => 'JPN', 'name' => 'Japan'],
-                ['code' => 'JEY', 'name' => 'Jersey'],
-                ['code' => 'JOR', 'name' => 'Jordan'],
-                ['code' => 'KAZ', 'name' => 'Kazakhstan'],
-                ['code' => 'KEN', 'name' => 'Kenya'],
-                ['code' => 'KIR', 'name' => 'Kiribati'],
-                ['code' => 'PRK', 'name' => 'North Korea'],
-                ['code' => 'KOR', 'name' => 'South Korea'],
-                ['code' => 'KWT', 'name' => 'Kuwait'],
-                ['code' => 'KGZ', 'name' => 'Kyrgyzstan'],
-                ['code' => 'LAO', 'name' => 'Laos'],
-                ['code' => 'LVA', 'name' => 'Latvia'],
-                ['code' => 'LBN', 'name' => 'Lebanon'],
-                ['code' => 'LSO', 'name' => 'Lesotho'],
-                ['code' => 'LBR', 'name' => 'Liberia'],
-                ['code' => 'LBY', 'name' => 'Libya'],
-                ['code' => 'LIE', 'name' => 'Liechtenstein'],
-                ['code' => 'LTU', 'name' => 'Lithuania'],
-                ['code' => 'LUX', 'name' => 'Luxembourg'],
-                ['code' => 'MAC', 'name' => 'Macao'],
-                ['code' => 'MDG', 'name' => 'Madagascar'],
-                ['code' => 'MWI', 'name' => 'Malawi'],
-                ['code' => 'MYS', 'name' => 'Malaysia'],
-                ['code' => 'MDV', 'name' => 'Maldives'],
-                ['code' => 'MLI', 'name' => 'Mali'],
-                ['code' => 'MLT', 'name' => 'Malta'],
-                ['code' => 'MHL', 'name' => 'Marshall Islands'],
-                ['code' => 'MTQ', 'name' => 'Martinique'],
-                ['code' => 'MRT', 'name' => 'Mauritania'],
-                ['code' => 'MUS', 'name' => 'Mauritius'],
-                ['code' => 'MYT', 'name' => 'Mayotte'],
-                ['code' => 'MEX', 'name' => 'Mexico'],
-                ['code' => 'FSM', 'name' => 'Micronesia'],
-                ['code' => 'MDA', 'name' => 'Moldova'],
-                ['code' => 'MCO', 'name' => 'Monaco'],
-                ['code' => 'MNG', 'name' => 'Mongolia'],
-                ['code' => 'MNE', 'name' => 'Montenegro'],
-                ['code' => 'MSR', 'name' => 'Montserrat'],
-                ['code' => 'MAR', 'name' => 'Morocco'],
-                ['code' => 'MOZ', 'name' => 'Mozambique'],
-                ['code' => 'MMR', 'name' => 'Myanmar'],
-                ['code' => 'NAM', 'name' => 'Namibia'],
-                ['code' => 'NRU', 'name' => 'Nauru'],
-                ['code' => 'NPL', 'name' => 'Nepal'],
-                ['code' => 'NLD', 'name' => 'Netherlands'],
-                ['code' => 'NCL', 'name' => 'New Caledonia'],
-                ['code' => 'NZL', 'name' => 'New Zealand'],
-                ['code' => 'NIC', 'name' => 'Nicaragua'],
-                ['code' => 'NER', 'name' => 'Niger'],
-                ['code' => 'NGA', 'name' => 'Nigeria'],
-                ['code' => 'NIU', 'name' => 'Niue'],
-                ['code' => 'NFK', 'name' => 'Norfolk Island'],
-                ['code' => 'MNP', 'name' => 'Northern Mariana Islands'],
-                ['code' => 'NOR', 'name' => 'Norway'],
-                ['code' => 'OMN', 'name' => 'Oman'],
-                ['code' => 'PAK', 'name' => 'Pakistan'],
-                ['code' => 'PLW', 'name' => 'Palau'],
-                ['code' => 'PSE', 'name' => 'Palestine'],
-                ['code' => 'PAN', 'name' => 'Panama'],
-                ['code' => 'PNG', 'name' => 'Papua New Guinea'],
-                ['code' => 'PRY', 'name' => 'Paraguay'],
-                ['code' => 'PER', 'name' => 'Peru'],
-                ['code' => 'PHL', 'name' => 'Philippines'],
-                ['code' => 'PCN', 'name' => 'Pitcairn'],
-                ['code' => 'POL', 'name' => 'Poland'],
-                ['code' => 'PRT', 'name' => 'Portugal'],
-                ['code' => 'PRI', 'name' => 'Puerto Rico'],
-                ['code' => 'QAT', 'name' => 'Qatar'],
-                ['code' => 'MKD', 'name' => 'North Macedonia'],
-                ['code' => 'ROU', 'name' => 'Romania'],
-                ['code' => 'RUS', 'name' => 'Russia'],
-                ['code' => 'RWA', 'name' => 'Rwanda'],
-                ['code' => 'REU', 'name' => 'Réunion'],
-                ['code' => 'BLM', 'name' => 'Saint Barthélemy'],
-                ['code' => 'SHN', 'name' => 'Saint Helena'],
-                ['code' => 'KNA', 'name' => 'Saint Kitts and Nevis'],
-                ['code' => 'LCA', 'name' => 'Saint Lucia'],
-                ['code' => 'MAF', 'name' => 'Saint Martin'],
-                ['code' => 'SPM', 'name' => 'Saint Pierre and Miquelon'],
-                ['code' => 'VCT', 'name' => 'Saint Vincent and the Grenadines'],
-                ['code' => 'WSM', 'name' => 'Samoa'],
-                ['code' => 'SMR', 'name' => 'San Marino'],
-                ['code' => 'STP', 'name' => 'Sao Tome and Principe'],
-                ['code' => 'SAU', 'name' => 'Saudi Arabia'],
-                ['code' => 'SEN', 'name' => 'Senegal'],
-                ['code' => 'SRB', 'name' => 'Serbia'],
-                ['code' => 'SYC', 'name' => 'Seychelles'],
-                ['code' => 'SLE', 'name' => 'Sierra Leone'],
-                ['code' => 'SGP', 'name' => 'Singapore'],
-                ['code' => 'SXM', 'name' => 'Sint Maarten'],
-                ['code' => 'SVK', 'name' => 'Slovakia'],
-                ['code' => 'SVN', 'name' => 'Slovenia'],
-                ['code' => 'SLB', 'name' => 'Solomon Islands'],
-                ['code' => 'SOM', 'name' => 'Somalia'],
-                ['code' => 'ZAF', 'name' => 'South Africa'],
-                ['code' => 'SGS', 'name' => 'South Georgia'],
-                ['code' => 'SSD', 'name' => 'South Sudan'],
-                ['code' => 'ESP', 'name' => 'Spain'],
-                ['code' => 'LKA', 'name' => 'Sri Lanka'],
-                ['code' => 'SDN', 'name' => 'Sudan'],
-                ['code' => 'SUR', 'name' => 'Suriname'],
-                ['code' => 'SJM', 'name' => 'Svalbard and Jan Mayen'],
-                ['code' => 'SWE', 'name' => 'Sweden'],
-                ['code' => 'CHE', 'name' => 'Switzerland'],
-                ['code' => 'SYR', 'name' => 'Syria'],
-                ['code' => 'TWN', 'name' => 'Taiwan'],
-                ['code' => 'TJK', 'name' => 'Tajikistan'],
-                ['code' => 'TZA', 'name' => 'Tanzania'],
-                ['code' => 'THA', 'name' => 'Thailand'],
-                ['code' => 'TLS', 'name' => 'Timor-Leste'],
-                ['code' => 'TGO', 'name' => 'Togo'],
-                ['code' => 'TKL', 'name' => 'Tokelau'],
-                ['code' => 'TON', 'name' => 'Tonga'],
-                ['code' => 'TTO', 'name' => 'Trinidad and Tobago'],
-                ['code' => 'TUN', 'name' => 'Tunisia'],
-                ['code' => 'TUR', 'name' => 'Turkey'],
-                ['code' => 'TKM', 'name' => 'Turkmenistan'],
-                ['code' => 'TCA', 'name' => 'Turks and Caicos Islands'],
-                ['code' => 'TUV', 'name' => 'Tuvalu'],
-                ['code' => 'UGA', 'name' => 'Uganda'],
-                ['code' => 'UKR', 'name' => 'Ukraine'],
-                ['code' => 'ARE', 'name' => 'United Arab Emirates'],
-                ['code' => 'GBR', 'name' => 'United Kingdom'],
-                ['code' => 'USA', 'name' => 'United States'],
-                ['code' => 'URY', 'name' => 'Uruguay'],
-                ['code' => 'UZB', 'name' => 'Uzbekistan'],
-                ['code' => 'VUT', 'name' => 'Vanuatu'],
-                ['code' => 'VEN', 'name' => 'Venezuela'],
-                ['code' => 'VNM', 'name' => 'Vietnam'],
-                ['code' => 'WLF', 'name' => 'Wallis and Futuna'],
-                ['code' => 'ESH', 'name' => 'Western Sahara'],
-                ['code' => 'YEM', 'name' => 'Yemen'],
-                ['code' => 'ZMB', 'name' => 'Zambia'],
-                ['code' => 'ZWE', 'name' => 'Zimbabwe'],
+                    ['code' => 'AFG', 'name' => 'Afghanistan'],
+                    ['code' => 'ALB', 'name' => 'Albania'],
+                    ['code' => 'DZA', 'name' => 'Algeria'],
+                    ['code' => 'ASM', 'name' => 'American Samoa'],
+                    ['code' => 'AND', 'name' => 'Andorra'],
+                    ['code' => 'AGO', 'name' => 'Angola'],
+                    ['code' => 'AIA', 'name' => 'Anguilla'],
+                    ['code' => 'ATA', 'name' => 'Antarctica'],
+                    ['code' => 'ATG', 'name' => 'Antigua and Barbuda'],
+                    ['code' => 'ARG', 'name' => 'Argentina'],
+                    ['code' => 'ARM', 'name' => 'Armenia'],
+                    ['code' => 'ABW', 'name' => 'Aruba'],
+                    ['code' => 'AUS', 'name' => 'Australia'],
+                    ['code' => 'AUT', 'name' => 'Austria'],
+                    ['code' => 'AZE', 'name' => 'Azerbaijan'],
+                    ['code' => 'BHS', 'name' => 'Bahamas'],
+                    ['code' => 'BHR', 'name' => 'Bahrain'],
+                    ['code' => 'BGD', 'name' => 'Bangladesh'],
+                    ['code' => 'BRB', 'name' => 'Barbados'],
+                    ['code' => 'BLR', 'name' => 'Belarus'],
+                    ['code' => 'BEL', 'name' => 'Belgium'],
+                    ['code' => 'BLZ', 'name' => 'Belize'],
+                    ['code' => 'BEN', 'name' => 'Benin'],
+                    ['code' => 'BMU', 'name' => 'Bermuda'],
+                    ['code' => 'BTN', 'name' => 'Bhutan'],
+                    ['code' => 'BOL', 'name' => 'Bolivia'],
+                    ['code' => 'BIH', 'name' => 'Bosnia and Herzegovina'],
+                    ['code' => 'BWA', 'name' => 'Botswana'],
+                    ['code' => 'BVT', 'name' => 'Bouvet Island'],
+                    ['code' => 'BRA', 'name' => 'Brazil'],
+                    ['code' => 'IOT', 'name' => 'British Indian Ocean Territory'],
+                    ['code' => 'BRN', 'name' => 'Brunei Darussalam'],
+                    ['code' => 'BGR', 'name' => 'Bulgaria'],
+                    ['code' => 'BFA', 'name' => 'Burkina Faso'],
+                    ['code' => 'BDI', 'name' => 'Burundi'],
+                    ['code' => 'CPV', 'name' => 'Cabo Verde'],
+                    ['code' => 'KHM', 'name' => 'Cambodia'],
+                    ['code' => 'CMR', 'name' => 'Cameroon'],
+                    ['code' => 'CAN', 'name' => 'Canada'],
+                    ['code' => 'CYM', 'name' => 'Cayman Islands'],
+                    ['code' => 'CAF', 'name' => 'Central African Republic'],
+                    ['code' => 'TCD', 'name' => 'Chad'],
+                    ['code' => 'CHL', 'name' => 'Chile'],
+                    ['code' => 'CHN', 'name' => 'China'],
+                    ['code' => 'CXR', 'name' => 'Christmas Island'],
+                    ['code' => 'CCK', 'name' => 'Cocos (Keeling) Islands'],
+                    ['code' => 'COL', 'name' => 'Colombia'],
+                    ['code' => 'COM', 'name' => 'Comoros'],
+                    ['code' => 'COG', 'name' => 'Congo'],
+                    ['code' => 'COD', 'name' => 'Congo (Democratic Republic of the)'],
+                    ['code' => 'COK', 'name' => 'Cook Islands'],
+                    ['code' => 'CRI', 'name' => 'Costa Rica'],
+                    ['code' => 'HRV', 'name' => 'Croatia'],
+                    ['code' => 'CUB', 'name' => 'Cuba'],
+                    ['code' => 'CUW', 'name' => 'Curaçao'],
+                    ['code' => 'CYP', 'name' => 'Cyprus'],
+                    ['code' => 'CZE', 'name' => 'Czechia'],
+                    ['code' => 'DNK', 'name' => 'Denmark'],
+                    ['code' => 'DJI', 'name' => 'Djibouti'],
+                    ['code' => 'DMA', 'name' => 'Dominica'],
+                    ['code' => 'DOM', 'name' => 'Dominican Republic'],
+                    ['code' => 'ECU', 'name' => 'Ecuador'],
+                    ['code' => 'EGY', 'name' => 'Egypt'],
+                    ['code' => 'SLV', 'name' => 'El Salvador'],
+                    ['code' => 'GNQ', 'name' => 'Equatorial Guinea'],
+                    ['code' => 'ERI', 'name' => 'Eritrea'],
+                    ['code' => 'EST', 'name' => 'Estonia'],
+                    ['code' => 'SWZ', 'name' => 'Eswatini'],
+                    ['code' => 'ETH', 'name' => 'Ethiopia'],
+                    ['code' => 'FLK', 'name' => 'Falkland Islands (Malvinas)'],
+                    ['code' => 'FRO', 'name' => 'Faroe Islands'],
+                    ['code' => 'FJI', 'name' => 'Fiji'],
+                    ['code' => 'FIN', 'name' => 'Finland'],
+                    ['code' => 'FRA', 'name' => 'France'],
+                    ['code' => 'GUF', 'name' => 'French Guiana'],
+                    ['code' => 'PYF', 'name' => 'French Polynesia'],
+                    ['code' => 'ATF', 'name' => 'French Southern Territories'],
+                    ['code' => 'GAB', 'name' => 'Gabon'],
+                    ['code' => 'GMB', 'name' => 'Gambia'],
+                    ['code' => 'GEO', 'name' => 'Georgia'],
+                    ['code' => 'DEU', 'name' => 'Germany'],
+                    ['code' => 'GHA', 'name' => 'Ghana'],
+                    ['code' => 'GIB', 'name' => 'Gibraltar'],
+                    ['code' => 'GRC', 'name' => 'Greece'],
+                    ['code' => 'GRL', 'name' => 'Greenland'],
+                    ['code' => 'GRD', 'name' => 'Grenada'],
+                    ['code' => 'GLP', 'name' => 'Guadeloupe'],
+                    ['code' => 'GUM', 'name' => 'Guam'],
+                    ['code' => 'GTM', 'name' => 'Guatemala'],
+                    ['code' => 'GGY', 'name' => 'Guernsey'],
+                    ['code' => 'GIN', 'name' => 'Guinea'],
+                    ['code' => 'GNB', 'name' => 'Guinea-Bissau'],
+                    ['code' => 'GUY', 'name' => 'Guyana'],
+                    ['code' => 'HTI', 'name' => 'Haiti'],
+                    ['code' => 'HMD', 'name' => 'Heard Island and McDonald Islands'],
+                    ['code' => 'VAT', 'name' => 'Holy See'],
+                    ['code' => 'HND', 'name' => 'Honduras'],
+                    ['code' => 'HKG', 'name' => 'Hong Kong'],
+                    ['code' => 'HUN', 'name' => 'Hungary'],
+                    ['code' => 'ISL', 'name' => 'Iceland'],
+                    ['code' => 'IND', 'name' => 'India'],
+                    ['code' => 'IDN', 'name' => 'Indonesia'],
+                    ['code' => 'IRN', 'name' => 'Iran'],
+                    ['code' => 'IRQ', 'name' => 'Iraq'],
+                    ['code' => 'IRL', 'name' => 'Ireland'],
+                    ['code' => 'IMN', 'name' => 'Isle of Man'],
+                    ['code' => 'ISR', 'name' => 'Israel'],
+                    ['code' => 'ITA', 'name' => 'Italy'],
+                    ['code' => 'JAM', 'name' => 'Jamaica'],
+                    ['code' => 'JPN', 'name' => 'Japan'],
+                    ['code' => 'JEY', 'name' => 'Jersey'],
+                    ['code' => 'JOR', 'name' => 'Jordan'],
+                    ['code' => 'KAZ', 'name' => 'Kazakhstan'],
+                    ['code' => 'KEN', 'name' => 'Kenya'],
+                    ['code' => 'KIR', 'name' => 'Kiribati'],
+                    ['code' => 'PRK', 'name' => 'North Korea'],
+                    ['code' => 'KOR', 'name' => 'South Korea'],
+                    ['code' => 'KWT', 'name' => 'Kuwait'],
+                    ['code' => 'KGZ', 'name' => 'Kyrgyzstan'],
+                    ['code' => 'LAO', 'name' => 'Laos'],
+                    ['code' => 'LVA', 'name' => 'Latvia'],
+                    ['code' => 'LBN', 'name' => 'Lebanon'],
+                    ['code' => 'LSO', 'name' => 'Lesotho'],
+                    ['code' => 'LBR', 'name' => 'Liberia'],
+                    ['code' => 'LBY', 'name' => 'Libya'],
+                    ['code' => 'LIE', 'name' => 'Liechtenstein'],
+                    ['code' => 'LTU', 'name' => 'Lithuania'],
+                    ['code' => 'LUX', 'name' => 'Luxembourg'],
+                    ['code' => 'MAC', 'name' => 'Macao'],
+                    ['code' => 'MDG', 'name' => 'Madagascar'],
+                    ['code' => 'MWI', 'name' => 'Malawi'],
+                    ['code' => 'MYS', 'name' => 'Malaysia'],
+                    ['code' => 'MDV', 'name' => 'Maldives'],
+                    ['code' => 'MLI', 'name' => 'Mali'],
+                    ['code' => 'MLT', 'name' => 'Malta'],
+                    ['code' => 'MHL', 'name' => 'Marshall Islands'],
+                    ['code' => 'MTQ', 'name' => 'Martinique'],
+                    ['code' => 'MRT', 'name' => 'Mauritania'],
+                    ['code' => 'MUS', 'name' => 'Mauritius'],
+                    ['code' => 'MYT', 'name' => 'Mayotte'],
+                    ['code' => 'MEX', 'name' => 'Mexico'],
+                    ['code' => 'FSM', 'name' => 'Micronesia'],
+                    ['code' => 'MDA', 'name' => 'Moldova'],
+                    ['code' => 'MCO', 'name' => 'Monaco'],
+                    ['code' => 'MNG', 'name' => 'Mongolia'],
+                    ['code' => 'MNE', 'name' => 'Montenegro'],
+                    ['code' => 'MSR', 'name' => 'Montserrat'],
+                    ['code' => 'MAR', 'name' => 'Morocco'],
+                    ['code' => 'MOZ', 'name' => 'Mozambique'],
+                    ['code' => 'MMR', 'name' => 'Myanmar'],
+                    ['code' => 'NAM', 'name' => 'Namibia'],
+                    ['code' => 'NRU', 'name' => 'Nauru'],
+                    ['code' => 'NPL', 'name' => 'Nepal'],
+                    ['code' => 'NLD', 'name' => 'Netherlands'],
+                    ['code' => 'NCL', 'name' => 'New Caledonia'],
+                    ['code' => 'NZL', 'name' => 'New Zealand'],
+                    ['code' => 'NIC', 'name' => 'Nicaragua'],
+                    ['code' => 'NER', 'name' => 'Niger'],
+                    ['code' => 'NGA', 'name' => 'Nigeria'],
+                    ['code' => 'NIU', 'name' => 'Niue'],
+                    ['code' => 'NFK', 'name' => 'Norfolk Island'],
+                    ['code' => 'MNP', 'name' => 'Northern Mariana Islands'],
+                    ['code' => 'NOR', 'name' => 'Norway'],
+                    ['code' => 'OMN', 'name' => 'Oman'],
+                    ['code' => 'PAK', 'name' => 'Pakistan'],
+                    ['code' => 'PLW', 'name' => 'Palau'],
+                    ['code' => 'PSE', 'name' => 'Palestine'],
+                    ['code' => 'PAN', 'name' => 'Panama'],
+                    ['code' => 'PNG', 'name' => 'Papua New Guinea'],
+                    ['code' => 'PRY', 'name' => 'Paraguay'],
+                    ['code' => 'PER', 'name' => 'Peru'],
+                    ['code' => 'PHL', 'name' => 'Philippines'],
+                    ['code' => 'PCN', 'name' => 'Pitcairn'],
+                    ['code' => 'POL', 'name' => 'Poland'],
+                    ['code' => 'PRT', 'name' => 'Portugal'],
+                    ['code' => 'PRI', 'name' => 'Puerto Rico'],
+                    ['code' => 'QAT', 'name' => 'Qatar'],
+                    ['code' => 'MKD', 'name' => 'North Macedonia'],
+                    ['code' => 'ROU', 'name' => 'Romania'],
+                    ['code' => 'RUS', 'name' => 'Russia'],
+                    ['code' => 'RWA', 'name' => 'Rwanda'],
+                    ['code' => 'REU', 'name' => 'Réunion'],
+                    ['code' => 'BLM', 'name' => 'Saint Barthélemy'],
+                    ['code' => 'SHN', 'name' => 'Saint Helena'],
+                    ['code' => 'KNA', 'name' => 'Saint Kitts and Nevis'],
+                    ['code' => 'LCA', 'name' => 'Saint Lucia'],
+                    ['code' => 'MAF', 'name' => 'Saint Martin'],
+                    ['code' => 'SPM', 'name' => 'Saint Pierre and Miquelon'],
+                    ['code' => 'VCT', 'name' => 'Saint Vincent and the Grenadines'],
+                    ['code' => 'WSM', 'name' => 'Samoa'],
+                    ['code' => 'SMR', 'name' => 'San Marino'],
+                    ['code' => 'STP', 'name' => 'Sao Tome and Principe'],
+                    ['code' => 'SAU', 'name' => 'Saudi Arabia'],
+                    ['code' => 'SEN', 'name' => 'Senegal'],
+                    ['code' => 'SRB', 'name' => 'Serbia'],
+                    ['code' => 'SYC', 'name' => 'Seychelles'],
+                    ['code' => 'SLE', 'name' => 'Sierra Leone'],
+                    ['code' => 'SGP', 'name' => 'Singapore'],
+                    ['code' => 'SXM', 'name' => 'Sint Maarten'],
+                    ['code' => 'SVK', 'name' => 'Slovakia'],
+                    ['code' => 'SVN', 'name' => 'Slovenia'],
+                    ['code' => 'SLB', 'name' => 'Solomon Islands'],
+                    ['code' => 'SOM', 'name' => 'Somalia'],
+                    ['code' => 'ZAF', 'name' => 'South Africa'],
+                    ['code' => 'SGS', 'name' => 'South Georgia'],
+                    ['code' => 'SSD', 'name' => 'South Sudan'],
+                    ['code' => 'ESP', 'name' => 'Spain'],
+                    ['code' => 'LKA', 'name' => 'Sri Lanka'],
+                    ['code' => 'SDN', 'name' => 'Sudan'],
+                    ['code' => 'SUR', 'name' => 'Suriname'],
+                    ['code' => 'SJM', 'name' => 'Svalbard and Jan Mayen'],
+                    ['code' => 'SWE', 'name' => 'Sweden'],
+                    ['code' => 'CHE', 'name' => 'Switzerland'],
+                    ['code' => 'SYR', 'name' => 'Syria'],
+                    ['code' => 'TWN', 'name' => 'Taiwan'],
+                    ['code' => 'TJK', 'name' => 'Tajikistan'],
+                    ['code' => 'TZA', 'name' => 'Tanzania'],
+                    ['code' => 'THA', 'name' => 'Thailand'],
+                    ['code' => 'TLS', 'name' => 'Timor-Leste'],
+                    ['code' => 'TGO', 'name' => 'Togo'],
+                    ['code' => 'TKL', 'name' => 'Tokelau'],
+                    ['code' => 'TON', 'name' => 'Tonga'],
+                    ['code' => 'TTO', 'name' => 'Trinidad and Tobago'],
+                    ['code' => 'TUN', 'name' => 'Tunisia'],
+                    ['code' => 'TUR', 'name' => 'Turkey'],
+                    ['code' => 'TKM', 'name' => 'Turkmenistan'],
+                    ['code' => 'TCA', 'name' => 'Turks and Caicos Islands'],
+                    ['code' => 'TUV', 'name' => 'Tuvalu'],
+                    ['code' => 'UGA', 'name' => 'Uganda'],
+                    ['code' => 'UKR', 'name' => 'Ukraine'],
+                    ['code' => 'ARE', 'name' => 'United Arab Emirates'],
+                    ['code' => 'GBR', 'name' => 'United Kingdom'],
+                    ['code' => 'USA', 'name' => 'United States'],
+                    ['code' => 'URY', 'name' => 'Uruguay'],
+                    ['code' => 'UZB', 'name' => 'Uzbekistan'],
+                    ['code' => 'VUT', 'name' => 'Vanuatu'],
+                    ['code' => 'VEN', 'name' => 'Venezuela'],
+                    ['code' => 'VNM', 'name' => 'Vietnam'],
+                    ['code' => 'WLF', 'name' => 'Wallis and Futuna'],
+                    ['code' => 'ESH', 'name' => 'Western Sahara'],
+                    ['code' => 'YEM', 'name' => 'Yemen'],
+                    ['code' => 'ZMB', 'name' => 'Zambia'],
+                    ['code' => 'ZWE', 'name' => 'Zimbabwe'],
             ];
         }
 
         private function get_country_alpha3($code)
         {
             $country_codes = array(
-                'AF' => 'AFG',
-                'AL' => 'ALB',
-                'DZ' => 'DZA',
-                'AS' => 'ASM',
-                'AD' => 'AND',
-                'AO' => 'AGO',
-                'AI' => 'AIA',
-                'AQ' => 'ATA',
-                'AG' => 'ATG',
-                'AR' => 'ARG',
-                'AM' => 'ARM',
-                'AW' => 'ABW',
-                'AU' => 'AUS',
-                'AT' => 'AUT',
-                'AZ' => 'AZE',
-                'BS' => 'BHS',
-                'BH' => 'BHR',
-                'BD' => 'BGD',
-                'BB' => 'BRB',
-                'BY' => 'BLR',
-                'BE' => 'BEL',
-                'BZ' => 'BLZ',
-                'BJ' => 'BEN',
-                'BM' => 'BMU',
-                'BT' => 'BTN',
-                'BO' => 'BOL',
-                'BA' => 'BIH',
-                'BW' => 'BWA',
-                'BV' => 'BVT',
-                'BR' => 'BRA',
-                'IO' => 'IOT',
-                'BN' => 'BRN',
-                'BG' => 'BGR',
-                'BF' => 'BFA',
-                'BI' => 'BDI',
-                'CV' => 'CPV',
-                'KH' => 'KHM',
-                'CM' => 'CMR',
-                'CA' => 'CAN',
-                'KY' => 'CYM',
-                'CF' => 'CAF',
-                'TD' => 'TCD',
-                'CL' => 'CHL',
-                'CN' => 'CHN',
-                'CX' => 'CXR',
-                'CC' => 'CCK',
-                'CO' => 'COL',
-                'KM' => 'COM',
-                'CG' => 'COG',
-                'CD' => 'COD',
-                'CK' => 'COK',
-                'CR' => 'CRI',
-                'HR' => 'HRV',
-                'CU' => 'CUB',
-                'CW' => 'CUW',
-                'CY' => 'CYP',
-                'CZ' => 'CZE',
-                'DK' => 'DNK',
-                'DJ' => 'DJI',
-                'DM' => 'DMA',
-                'DO' => 'DOM',
-                'EC' => 'ECU',
-                'EG' => 'EGY',
-                'SV' => 'SLV',
-                'GQ' => 'GNQ',
-                'ER' => 'ERI',
-                'EE' => 'EST',
-                'SZ' => 'SWZ',
-                'ET' => 'ETH',
-                'FK' => 'FLK',
-                'FO' => 'FRO',
-                'FJ' => 'FJI',
-                'FI' => 'FIN',
-                'FR' => 'FRA',
-                'GF' => 'GUF',
-                'PF' => 'PYF',
-                'TF' => 'ATF',
-                'GA' => 'GAB',
-                'GM' => 'GMB',
-                'GE' => 'GEO',
-                'DE' => 'DEU',
-                'GH' => 'GHA',
-                'GI' => 'GIB',
-                'GR' => 'GRC',
-                'GL' => 'GRL',
-                'GD' => 'GRD',
-                'GP' => 'GLP',
-                'GU' => 'GUM',
-                'GT' => 'GTM',
-                'GG' => 'GGY',
-                'GN' => 'GIN',
-                'GW' => 'GNB',
-                'GY' => 'GUY',
-                'HT' => 'HTI',
-                'HM' => 'HMD',
-                'VA' => 'VAT',
-                'HN' => 'HND',
-                'HK' => 'HKG',
-                'HU' => 'HUN',
-                'IS' => 'ISL',
-                'IN' => 'IND',
-                'ID' => 'IDN',
-                'IR' => 'IRN',
-                'IQ' => 'IRQ',
-                'IE' => 'IRL',
-                'IM' => 'IMN',
-                'IL' => 'ISR',
-                'IT' => 'ITA',
-                'JM' => 'JAM',
-                'JP' => 'JPN',
-                'JE' => 'JEY',
-                'JO' => 'JOR',
-                'KZ' => 'KAZ',
-                'KE' => 'KEN',
-                'KI' => 'KIR',
-                'KP' => 'PRK',
-                'KR' => 'KOR',
-                'KW' => 'KWT',
-                'KG' => 'KGZ',
-                'LA' => 'LAO',
-                'LV' => 'LVA',
-                'LB' => 'LBN',
-                'LS' => 'LSO',
-                'LR' => 'LBR',
-                'LY' => 'LBY',
-                'LI' => 'LIE',
-                'LT' => 'LTU',
-                'LU' => 'LUX',
-                'MO' => 'MAC',
-                'MG' => 'MDG',
-                'MW' => 'MWI',
-                'MY' => 'MYS',
-                'MV' => 'MDV',
-                'ML' => 'MLI',
-                'MT' => 'MLT',
-                'MH' => 'MHL',
-                'MQ' => 'MTQ',
-                'MR' => 'MRT',
-                'MU' => 'MUS',
-                'YT' => 'MYT',
-                'MX' => 'MEX',
-                'FM' => 'FSM',
-                'MD' => 'MDA',
-                'MC' => 'MCO',
-                'MN' => 'MNG',
-                'ME' => 'MNE',
-                'MS' => 'MSR',
-                'MA' => 'MAR',
-                'MZ' => 'MOZ',
-                'MM' => 'MMR',
-                'NA' => 'NAM',
-                'NR' => 'NRU',
-                'NP' => 'NPL',
-                'NL' => 'NLD',
-                'NC' => 'NCL',
-                'NZ' => 'NZL',
-                'NI' => 'NIC',
-                'NE' => 'NER',
-                'NG' => 'NGA',
-                'NU' => 'NIU',
-                'NF' => 'NFK',
-                'MP' => 'MNP',
-                'NO' => 'NOR',
-                'OM' => 'OMN',
-                'PK' => 'PAK',
-                'PW' => 'PLW',
-                'PS' => 'PSE',
-                'PA' => 'PAN',
-                'PG' => 'PNG',
-                'PY' => 'PRY',
-                'PE' => 'PER',
-                'PH' => 'PHL',
-                'PN' => 'PCN',
-                'PL' => 'POL',
-                'PT' => 'PRT',
-                'PR' => 'PRI',
-                'QA' => 'QAT',
-                'MK' => 'MKD',
-                'RO' => 'ROU',
-                'RU' => 'RUS',
-                'RW' => 'RWA',
-                'RE' => 'REU',
-                'BL' => 'BLM',
-                'SH' => 'SHN',
-                'KN' => 'KNA',
-                'LC' => 'LCA',
-                'MF' => 'MAF',
-                'PM' => 'SPM',
-                'VC' => 'VCT',
-                'WS' => 'WSM',
-                'SM' => 'SMR',
-                'ST' => 'STP',
-                'SA' => 'SAU',
-                'SN' => 'SEN',
-                'RS' => 'SRB',
-                'SC' => 'SYC',
-                'SL' => 'SLE',
-                'SG' => 'SGP',
-                'SX' => 'SXM',
-                'SK' => 'SVK',
-                'SI' => 'SVN',
-                'SB' => 'SLB',
-                'SO' => 'SOM',
-                'ZA' => 'ZAF',
-                'GS' => 'SGS',
-                'SS' => 'SSD',
-                'ES' => 'ESP',
-                'LK' => 'LKA',
-                'SD' => 'SDN',
-                'SR' => 'SUR',
-                'SJ' => 'SJM',
-                'SE' => 'SWE',
-                'CH' => 'CHE',
-                'SY' => 'SYR',
-                'TW' => 'TWN',
-                'TJ' => 'TJK',
-                'TZ' => 'TZA',
-                'TH' => 'THA',
-                'TL' => 'TLS',
-                'TG' => 'TGO',
-                'TK' => 'TKL',
-                'TO' => 'TON',
-                'TT' => 'TTO',
-                'TN' => 'TUN',
-                'TR' => 'TUR',
-                'TM' => 'TKM',
-                'TC' => 'TCA',
-                'TV' => 'TUV',
-                'UG' => 'UGA',
-                'UA' => 'UKR',
-                'AE' => 'ARE',
-                'GB' => 'GBR',
-                'US' => 'USA',
-                'UY' => 'URY',
-                'UZ' => 'UZB',
-                'VU' => 'VUT',
-                'VE' => 'VEN',
-                'VN' => 'VNM',
-                'WF' => 'WLF',
-                'EH' => 'ESH',
-                'YE' => 'YEM',
-                'ZM' => 'ZMB',
-                'ZW' => 'ZWE',
+                    'AF' => 'AFG',
+                    'AL' => 'ALB',
+                    'DZ' => 'DZA',
+                    'AS' => 'ASM',
+                    'AD' => 'AND',
+                    'AO' => 'AGO',
+                    'AI' => 'AIA',
+                    'AQ' => 'ATA',
+                    'AG' => 'ATG',
+                    'AR' => 'ARG',
+                    'AM' => 'ARM',
+                    'AW' => 'ABW',
+                    'AU' => 'AUS',
+                    'AT' => 'AUT',
+                    'AZ' => 'AZE',
+                    'BS' => 'BHS',
+                    'BH' => 'BHR',
+                    'BD' => 'BGD',
+                    'BB' => 'BRB',
+                    'BY' => 'BLR',
+                    'BE' => 'BEL',
+                    'BZ' => 'BLZ',
+                    'BJ' => 'BEN',
+                    'BM' => 'BMU',
+                    'BT' => 'BTN',
+                    'BO' => 'BOL',
+                    'BA' => 'BIH',
+                    'BW' => 'BWA',
+                    'BV' => 'BVT',
+                    'BR' => 'BRA',
+                    'IO' => 'IOT',
+                    'BN' => 'BRN',
+                    'BG' => 'BGR',
+                    'BF' => 'BFA',
+                    'BI' => 'BDI',
+                    'CV' => 'CPV',
+                    'KH' => 'KHM',
+                    'CM' => 'CMR',
+                    'CA' => 'CAN',
+                    'KY' => 'CYM',
+                    'CF' => 'CAF',
+                    'TD' => 'TCD',
+                    'CL' => 'CHL',
+                    'CN' => 'CHN',
+                    'CX' => 'CXR',
+                    'CC' => 'CCK',
+                    'CO' => 'COL',
+                    'KM' => 'COM',
+                    'CG' => 'COG',
+                    'CD' => 'COD',
+                    'CK' => 'COK',
+                    'CR' => 'CRI',
+                    'HR' => 'HRV',
+                    'CU' => 'CUB',
+                    'CW' => 'CUW',
+                    'CY' => 'CYP',
+                    'CZ' => 'CZE',
+                    'DK' => 'DNK',
+                    'DJ' => 'DJI',
+                    'DM' => 'DMA',
+                    'DO' => 'DOM',
+                    'EC' => 'ECU',
+                    'EG' => 'EGY',
+                    'SV' => 'SLV',
+                    'GQ' => 'GNQ',
+                    'ER' => 'ERI',
+                    'EE' => 'EST',
+                    'SZ' => 'SWZ',
+                    'ET' => 'ETH',
+                    'FK' => 'FLK',
+                    'FO' => 'FRO',
+                    'FJ' => 'FJI',
+                    'FI' => 'FIN',
+                    'FR' => 'FRA',
+                    'GF' => 'GUF',
+                    'PF' => 'PYF',
+                    'TF' => 'ATF',
+                    'GA' => 'GAB',
+                    'GM' => 'GMB',
+                    'GE' => 'GEO',
+                    'DE' => 'DEU',
+                    'GH' => 'GHA',
+                    'GI' => 'GIB',
+                    'GR' => 'GRC',
+                    'GL' => 'GRL',
+                    'GD' => 'GRD',
+                    'GP' => 'GLP',
+                    'GU' => 'GUM',
+                    'GT' => 'GTM',
+                    'GG' => 'GGY',
+                    'GN' => 'GIN',
+                    'GW' => 'GNB',
+                    'GY' => 'GUY',
+                    'HT' => 'HTI',
+                    'HM' => 'HMD',
+                    'VA' => 'VAT',
+                    'HN' => 'HND',
+                    'HK' => 'HKG',
+                    'HU' => 'HUN',
+                    'IS' => 'ISL',
+                    'IN' => 'IND',
+                    'ID' => 'IDN',
+                    'IR' => 'IRN',
+                    'IQ' => 'IRQ',
+                    'IE' => 'IRL',
+                    'IM' => 'IMN',
+                    'IL' => 'ISR',
+                    'IT' => 'ITA',
+                    'JM' => 'JAM',
+                    'JP' => 'JPN',
+                    'JE' => 'JEY',
+                    'JO' => 'JOR',
+                    'KZ' => 'KAZ',
+                    'KE' => 'KEN',
+                    'KI' => 'KIR',
+                    'KP' => 'PRK',
+                    'KR' => 'KOR',
+                    'KW' => 'KWT',
+                    'KG' => 'KGZ',
+                    'LA' => 'LAO',
+                    'LV' => 'LVA',
+                    'LB' => 'LBN',
+                    'LS' => 'LSO',
+                    'LR' => 'LBR',
+                    'LY' => 'LBY',
+                    'LI' => 'LIE',
+                    'LT' => 'LTU',
+                    'LU' => 'LUX',
+                    'MO' => 'MAC',
+                    'MG' => 'MDG',
+                    'MW' => 'MWI',
+                    'MY' => 'MYS',
+                    'MV' => 'MDV',
+                    'ML' => 'MLI',
+                    'MT' => 'MLT',
+                    'MH' => 'MHL',
+                    'MQ' => 'MTQ',
+                    'MR' => 'MRT',
+                    'MU' => 'MUS',
+                    'YT' => 'MYT',
+                    'MX' => 'MEX',
+                    'FM' => 'FSM',
+                    'MD' => 'MDA',
+                    'MC' => 'MCO',
+                    'MN' => 'MNG',
+                    'ME' => 'MNE',
+                    'MS' => 'MSR',
+                    'MA' => 'MAR',
+                    'MZ' => 'MOZ',
+                    'MM' => 'MMR',
+                    'NA' => 'NAM',
+                    'NR' => 'NRU',
+                    'NP' => 'NPL',
+                    'NL' => 'NLD',
+                    'NC' => 'NCL',
+                    'NZ' => 'NZL',
+                    'NI' => 'NIC',
+                    'NE' => 'NER',
+                    'NG' => 'NGA',
+                    'NU' => 'NIU',
+                    'NF' => 'NFK',
+                    'MP' => 'MNP',
+                    'NO' => 'NOR',
+                    'OM' => 'OMN',
+                    'PK' => 'PAK',
+                    'PW' => 'PLW',
+                    'PS' => 'PSE',
+                    'PA' => 'PAN',
+                    'PG' => 'PNG',
+                    'PY' => 'PRY',
+                    'PE' => 'PER',
+                    'PH' => 'PHL',
+                    'PN' => 'PCN',
+                    'PL' => 'POL',
+                    'PT' => 'PRT',
+                    'PR' => 'PRI',
+                    'QA' => 'QAT',
+                    'MK' => 'MKD',
+                    'RO' => 'ROU',
+                    'RU' => 'RUS',
+                    'RW' => 'RWA',
+                    'RE' => 'REU',
+                    'BL' => 'BLM',
+                    'SH' => 'SHN',
+                    'KN' => 'KNA',
+                    'LC' => 'LCA',
+                    'MF' => 'MAF',
+                    'PM' => 'SPM',
+                    'VC' => 'VCT',
+                    'WS' => 'WSM',
+                    'SM' => 'SMR',
+                    'ST' => 'STP',
+                    'SA' => 'SAU',
+                    'SN' => 'SEN',
+                    'RS' => 'SRB',
+                    'SC' => 'SYC',
+                    'SL' => 'SLE',
+                    'SG' => 'SGP',
+                    'SX' => 'SXM',
+                    'SK' => 'SVK',
+                    'SI' => 'SVN',
+                    'SB' => 'SLB',
+                    'SO' => 'SOM',
+                    'ZA' => 'ZAF',
+                    'GS' => 'SGS',
+                    'SS' => 'SSD',
+                    'ES' => 'ESP',
+                    'LK' => 'LKA',
+                    'SD' => 'SDN',
+                    'SR' => 'SUR',
+                    'SJ' => 'SJM',
+                    'SE' => 'SWE',
+                    'CH' => 'CHE',
+                    'SY' => 'SYR',
+                    'TW' => 'TWN',
+                    'TJ' => 'TJK',
+                    'TZ' => 'TZA',
+                    'TH' => 'THA',
+                    'TL' => 'TLS',
+                    'TG' => 'TGO',
+                    'TK' => 'TKL',
+                    'TO' => 'TON',
+                    'TT' => 'TTO',
+                    'TN' => 'TUN',
+                    'TR' => 'TUR',
+                    'TM' => 'TKM',
+                    'TC' => 'TCA',
+                    'TV' => 'TUV',
+                    'UG' => 'UGA',
+                    'UA' => 'UKR',
+                    'AE' => 'ARE',
+                    'GB' => 'GBR',
+                    'US' => 'USA',
+                    'UY' => 'URY',
+                    'UZ' => 'UZB',
+                    'VU' => 'VUT',
+                    'VE' => 'VEN',
+                    'VN' => 'VNM',
+                    'WF' => 'WLF',
+                    'EH' => 'ESH',
+                    'YE' => 'YEM',
+                    'ZM' => 'ZMB',
+                    'ZW' => 'ZWE',
             );
 
             return $country_codes[$code];

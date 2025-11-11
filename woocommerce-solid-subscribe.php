@@ -14,23 +14,28 @@
  */
 
 
-define( 'WOOCOMMERCE_GATEWAY_SOLID_SUBSCRIBE_VERSION', '1.1.1' ); // WRCS: DEFINED_VERSION.
+define( 'WOOCOMMERCE_GATEWAY_SOLID_SUBSCRIBE_VERSION', '1.1.2' ); // WRCS: DEFINED_VERSION.
 define( 'WOOCOMMERCE_GATEWAY_SOLID_SUBSCRIBE_MIN_WC_VERSION', '6.0' );
 define( 'WOOCOMMERCE_GATEWAY_SOLID_SUBSCRIBE_MIN_WCS_VERSION', '2.0' );
+
+define('WC_SOLID_PLUGIN_URL', plugin_dir_url(__FILE__));
+define('WC_SOLID_PLUGIN_PATH', plugin_dir_path(__FILE__));
 
 /**
  * The class itself, please note that it is inside plugins_loaded action hook
  */
-add_action( 'plugins_loaded', 'solid_gateway_subscribe_init' );
+add_action( 'plugins_loaded', 'solid_gateway_subscribe_init', 20 );
 
 function solid_gateway_subscribe_init() {
+    if (!class_exists('WC_Payment_Gateway')) {
+        return;
+    }
     if ( ! class_exists( 'WC_Payment_Gateway' ) ) {
         return;
     }
-    load_plugin_textdomain( 'wc-solid', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
-    // Show notice for outdated version of WooCommerce.
-    if ( ! class_exists( 'WooCommerce' ) || version_compare( WC()->version, WOOCOMMERCE_GATEWAY_SOLID_SUBSCRIBE_MIN_WC_VERSION, '<' ) ) {
-        add_action( 'admin_notices', 'woocommerce_solid_subscribe_outdated_wc_notice' );
+
+    if (!class_exists('WooCommerce') || version_compare(WC()->version, WOOCOMMERCE_GATEWAY_SOLID_SUBSCRIBE_MIN_WC_VERSION, '<')) {
+        add_action('admin_notices', 'woocommerce_solid_subscribe_outdated_wc_notice');
         return;
     }
 
@@ -44,7 +49,6 @@ function solid_gateway_subscribe_init() {
 
     if (in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_option('active_plugins')))) {
         add_filter('woocommerce_payment_gateways', 'solid_add_subscribe_gateway_class');
-//        add_filter('woocommerce_payment_gateways', 'solid_add_gateway_class');
     }
     add_action('wp_ajax_solid_pause_subscription', [WC_Solid_Gateway_Subscribe::get_instance(), 'pause_subscription']);
     add_action('wp_ajax_nopriv_solid_pause_subscription', [WC_Solid_Gateway_Subscribe::get_instance(), 'pause_subscription']);
@@ -54,6 +58,10 @@ function solid_gateway_subscribe_init() {
     add_action('wp_ajax_nopriv_solid_restore_subscription', [WC_Solid_Gateway_Subscribe::get_instance(), 'restore_subscription']);
     add_action('woocommerce_subscription_status_updated', [WC_Solid_Gateway_Subscribe::get_instance(), 'send_status_change_to_gateway'], 10, 3);
 }
+
+add_action('init', function() {
+    load_plugin_textdomain('wc-solid', false, dirname(plugin_basename(__FILE__)) . '/languages');
+});
 
 register_activation_hook(__FILE__, function () {
     if ( ! class_exists( 'WC_Solid_Subscribe_Model' ) ) {
@@ -103,7 +111,21 @@ function solid_add_subscribe_gateway_class($gateways) {
  */
 function woocommerce_solid_subscribe_outdated_wc_notice() {
     echo '<div class="notice notice-error"><p>';
-    // translators: %s Minimum WooCommerce Subscriptions version.
-    echo esc_html( sprintf('This version of WooCommerce Solid Payment Gateway Subscribe requires WooCommerce %s or newer.', WOOCOMMERCE_GATEWAY_SOLID_SUBSCRIBE_MIN_WC_VERSION ) );
+    echo esc_html(
+        sprintf(
+            'This version of WooCommerce Solid Payment Gateway Subscribe requires WooCommerce %s or newer.',
+            WOOCOMMERCE_GATEWAY_SOLID_SUBSCRIBE_MIN_WC_VERSION
+        )
+    );
     echo '</p></div>';
 }
+
+add_action('before_woocommerce_init', function() {
+    if (class_exists(\Automattic\WooCommerce\Utilities\FeaturesUtil::class)) {
+        \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility(
+            'custom_order_tables',
+            __FILE__,
+            true
+        );
+    }
+});

@@ -1,10 +1,11 @@
 <?php
 
 if ( ! defined( 'ABSPATH' ) ) {
-	exit; // Выход, если доступ осуществляется напрямую
+    exit; // Выход, если доступ осуществляется напрямую
 }
 
 class WC_Solid_Subscribe_Webhook_Handler {
+    protected $settings;
     public function __construct() {
         $this->settings = get_option( 'woocommerce_solid_subscribe_settings', [] ); // Получение настроек Solid для WooCommerce
     }
@@ -399,39 +400,39 @@ class WC_Solid_Subscribe_Webhook_Handler {
     }
 
     /**
-    * Обрабатывает входящий webhook.
-    *
-    * @since 4.0.0
-    * @version 4.0.0
-    * @param string $request_body
-    */
-   public function process_webhook($type, $request_body ) {
-       $notification = json_decode( $request_body ); // Декодируем тело запроса
-       switch ( $type ) {
-           case 'alt_order.updated':
-           case 'order.updated':
-               // Обрабатываем различные статусы заказа
-               switch ($notification->order->status) {
-                   case 'auth_ok':
-                       $this->process_webhook_auth( $notification ); // Обработка авторизации
-                       break;
-                   case 'settle_ok':
-                   case 'approved':
-                       $this->process_webhook_charge_approved( $notification ); // Обработка подтверждения платежа
-                       break;
-                   case 'declined':
-                       $this->process_webhook_charge_declined( $notification ); // Обработка отклоненного платежа
-                       break;
-                   case 'refunded':
-                       $this->process_webhook_charge_refunded( $notification ); // Обработка возврата платежа
-                       break;
+     * Обрабатывает входящий webhook.
+     *
+     * @since 4.0.0
+     * @version 4.0.0
+     * @param string $request_body
+     */
+    public function process_webhook($type, $request_body ) {
+        $notification = json_decode( $request_body ); // Декодируем тело запроса
+        switch ( $type ) {
+            case 'alt_order.updated':
+            case 'order.updated':
+                // Обрабатываем различные статусы заказа
+                switch ($notification->order->status) {
+                    case 'auth_ok':
+                        $this->process_webhook_auth( $notification ); // Обработка авторизации
+                        break;
+                    case 'settle_ok':
+                    case 'approved':
+                        $this->process_webhook_charge_approved( $notification ); // Обработка подтверждения платежа
+                        break;
+                    case 'declined':
+                        $this->process_webhook_charge_declined( $notification ); // Обработка отклоненного платежа
+                        break;
+                    case 'refunded':
+                        $this->process_webhook_charge_refunded( $notification ); // Обработка возврата платежа
+                        break;
 
-                   default:
-                       WC_Solid_Subscribe_Logger::debug( sprintf( 'Необработанный hook: %1$s -> %2$s', $type, $notification->order->status ) );
-                       break;
-               }
-               break;
-           case 'subscribe.updated':
+                    default:
+                        WC_Solid_Subscribe_Logger::debug( sprintf( 'Необработанный hook: %1$s -> %2$s', $type, $notification->order->status ) );
+                        break;
+                }
+                break;
+            case 'subscribe.updated':
                 switch ($notification->callback_type) {
                     case 'init':
                     case 'active':
@@ -459,11 +460,11 @@ class WC_Solid_Subscribe_Webhook_Handler {
                         break;
                 }
                 break;
-           default:
-               WC_Solid_Subscribe_Logger::debug( sprintf( 'Необработанный hook: %1$s',$type ) );
-               break;
-       }
-   }
+            default:
+                WC_Solid_Subscribe_Logger::debug( sprintf( 'Необработанный hook: %1$s',$type ) );
+                break;
+        }
+    }
 
     /**
      * Повертає ID підписки по UUID підписки
